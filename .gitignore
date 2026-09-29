@@ -1,0 +1,11 @@
+__pycache__/
+.venv
+/venv/
+
+reports/
+
+vuln-api/coverage.xml
+frontend/coverage/
+frontend/node_modules/
+certbot/*
+.idea/

@@ -1,0 +1,65 @@
+name: CI + SonarQube
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test-and-sonar:
+    name: Test, Coverage and Sonar Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Prepare virtualenv and install dependencies
+        working-directory: ./vuln-api
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Run tests (pytest) and generate coverage reports
+        working-directory: ./vuln-api
+        run: |
+          . .venv/bin/activate
+          .venv/bin/pip install pytest pytest-cov
+          .venv/bin/python -m pytest tests/ --junitxml=junit/test-results.xml --cov=app --cov-report=xml:coverage.xml --cov-report=html -q
+
+      - name: List coverage file
+        run: |
+          echo "coverage file: vuln-api/coverage.xml"
+          ls -l vuln-api/coverage.xml || true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: vuln-api/coverage.xml
+
+
+      - name: SonarCloud Scan & Quality Gate
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        with:
+          args: >
+            -Dsonar.projectKey=StephanPaulRamirez_DevsecopsPriv
+            -Dsonar.organization=stephanpaulramirez
+            -Dsonar.python.coverage.reportPaths=vuln-api/coverage.xml
+            -Dsonar.sources=vuln-api/app
+            -Dsonar.tests=vuln-api/tests
+            -Dsonar.qualitygate.wait=true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

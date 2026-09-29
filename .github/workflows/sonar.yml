@@ -55,8 +55,8 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         with:
           args: >
-            -Dsonar.projectKey=StephanPaulRamirez_DevsecopsPriv
-            -Dsonar.organization=stephanpaulramirez
+            -Dsonar.projectKey=devsecops-vuln
+            -Dsonar.organization=DevSecOps-Vuln
             -Dsonar.python.coverage.reportPaths=vuln-api/coverage.xml
             -Dsonar.sources=vuln-api/app
             -Dsonar.tests=vuln-api/tests

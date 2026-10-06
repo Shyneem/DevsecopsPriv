@@ -3,11 +3,11 @@ import re
 from typing import List, Dict, Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from ..models import User
-from ..db import SessionLocal
-from ..auth import hash_password, verify_password
-from ..schemas.auth import ChangePasswordRequest
-from ..schemas.users import NewUserRequest
+from app.models import User
+from app.db import SessionLocal
+from app.auth import hash_password, verify_password
+from app.schemas.auth import ChangePasswordRequest
+from app.schemas.users import NewUserRequest
 
 
 def validate_strong_password(password: str) -> None:

@@ -2,11 +2,11 @@
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from ..db import get_db
-from ..models import User
-from ..auth import get_current_user
-from ..schemas.vulns import VulnerabilityResponse
-from ..services.vuln_service import (
+from app.db import get_db
+from app.models import User
+from app.auth import get_current_user
+from app.schemas.vulns import VulnerabilityResponse
+from app.services.vuln_service import (
     sync_all_connections as sync_all_connections_service,
     list_vulns as list_vulns_service,
 )

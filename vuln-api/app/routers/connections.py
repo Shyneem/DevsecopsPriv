@@ -2,18 +2,18 @@
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from ..db import get_db
-from ..models import User
-from ..auth import get_current_user
-from ..schemas.connections import WazuhConnectionRequest, WazuhConnectionResponse
-from ..services.connection_service import (
+from app.db import get_db
+from app.models import User
+from app.auth import get_current_user
+from app.schemas.connections import WazuhConnectionRequest, WazuhConnectionResponse
+from app.services.connection_service import (
     list_connections as list_connections_service,
     create_connection as create_connection_service,
     update_connection as update_connection_service,
     delete_connection as delete_connection_service,
     test_wazuh_connection_by_id,
 )
-from ..services.vuln_service import sync_connection as sync_connection_service
+from app.services.vuln_service import sync_connection as sync_connection_service
 
 router = APIRouter(prefix="/wazuh-connections", tags=["wazuh-connections"])
 

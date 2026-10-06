@@ -6,10 +6,11 @@ from urllib.parse import urlparse
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
-from ..models import WazuhConnection
-from ..crypto import encrypt, decrypt
-from ..wazuh_client import test_connection as default_test_connection
-from ..schemas.connections import WazuhConnectionRequest
+from app.models import WazuhConnection
+from app.crypto import encrypt, decrypt
+from app.wazuh_client import test_connection as default_test_connection
+from app.schemas.connections import WazuhConnectionRequest
+from typing import cast
 
 CONNECTION_NOT_FOUND = "Conexión no encontrada"
 
@@ -117,13 +118,14 @@ def delete_connection(db: Session, conn_id: int) -> Dict[str, str]:
 
 
 def test_wazuh_connection_by_id(db: Session, conn_id: int) -> Dict[str, Any]:
-    conn = db.query(WazuhConnection).filter(WazuhConnection.id == conn_id).first()
+    conn=( db.query(WazuhConnection).filter(WazuhConnection.id == conn_id).first())
+
     if not conn:
         raise HTTPException(status_code=404, detail=CONNECTION_NOT_FOUND)
 
     test_conn_fn = get_test_connection_fn()
     ok = test_conn_fn(
-        conn.indexer_url, conn.wazuh_user, decrypt(conn.wazuh_password)
+        cast(str, conn.indexer_url), cast(str, conn.wazuh_user), decrypt(cast(str,conn.wazuh_password))
     )
 
     conn.tested = True

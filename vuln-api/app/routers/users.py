@@ -2,11 +2,11 @@
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from ..db import get_db
-from ..models import User
-from ..auth import get_current_user
-from ..schemas.users import NewUserRequest, CurrentUserResponse, UserResponse
-from ..services.user_service import (
+from app.db import get_db
+from app.models import User
+from app.auth import get_current_user
+from app.schemas.users import NewUserRequest, CurrentUserResponse, UserResponse
+from app.services.user_service import (
     create_user as create_user_service,
     list_users as list_users_service,
     delete_user as delete_user_service,

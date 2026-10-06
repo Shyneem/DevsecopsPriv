@@ -5,11 +5,27 @@ from typing import List, Dict, Any, Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
-from ..models import WazuhVulnerability, WazuhConnection, VulnerabilityHistory
-from ..crypto import decrypt
-from ..wazuh_client import fetch_all_vulns as default_fetch_all_vulns
-from .connection_service import CONNECTION_NOT_FOUND
+from app.models import WazuhVulnerability, WazuhConnection, VulnerabilityHistory
+from app.crypto import decrypt
+from app.wazuh_client import fetch_all_vulns as default_fetch_all_vulns
+from app.services.connection_service import CONNECTION_NOT_FOUND
+from typing import Any, cast
 
+
+def _handle_existing_vuln(
+    db: Session, existing: WazuhVulnerability, vuln: dict
+) -> None:
+    if existing.status == "RESOLVED":
+        # 💡 cast fuerza a Pyrefly a ignorar el tipo inferido 'Never'
+        existing.status = cast(Any, "ACTIVE")
+
+        db.add(
+            VulnerabilityHistory(
+                vulnerability_id=existing.id,
+                action="REOPENED",
+                details="La vulnerabilidad fue detectada nuevamente por Wazuh",
+            )
+        )
 
 def get_fetch_all_vulns_fn():
     """Obtiene la función fetch_all_vulns, priorizando app.main si fue parcheada con @patch."""
@@ -21,7 +37,7 @@ def get_fetch_all_vulns_fn():
 
 def _handle_existing_vuln(db: Session, existing: WazuhVulnerability, vuln: dict) -> None:
     if existing.status == "RESOLVED":
-        existing.status = "ACTIVE"
+        existing.status = cast(Any,"ACTIVE")
         db.add(
             VulnerabilityHistory(
                 vulnerability_id=existing.id,
@@ -29,8 +45,9 @@ def _handle_existing_vuln(db: Session, existing: WazuhVulnerability, vuln: dict)
                 details="La vulnerabilidad fue detectada nuevamente por Wazuh",
             )
         )
+    new_severity: str | None = vuln.get("severity")
 
-    if existing.severity != vuln.get("severity"):
+    if existing.severity != new_severity:
         db.add(
             VulnerabilityHistory(
                 vulnerability_id=existing.id,
@@ -136,9 +153,13 @@ def process_wazuh_vulnerabilities(db: Session, conn_id: int, raw_vulns: list) ->
     _resolve_missing_vulns(db, active_vuln_dict, seen_vuln_ids)
     return count
 
+from typing import cast
+
 
 def sync_connection(db: Session, conn_id: int) -> Dict[str, Any]:
-    conn = db.query(WazuhConnection).filter(WazuhConnection.id == conn_id).first()
+    conn = (
+        db.query(WazuhConnection).filter(WazuhConnection.id == conn_id).first()
+    )
     if not conn:
         raise HTTPException(status_code=404, detail=CONNECTION_NOT_FOUND)
     if not conn.is_active:
@@ -146,14 +167,15 @@ def sync_connection(db: Session, conn_id: int) -> Dict[str, Any]:
 
     fetch_fn = get_fetch_all_vulns_fn()
     raw_vulns = fetch_fn(
-        conn.indexer_url, conn.wazuh_user, decrypt(conn.wazuh_password)
+        cast(str, conn.indexer_url),
+        cast(str, conn.wazuh_user),
+        decrypt(cast(str, conn.wazuh_password)),
     )
 
-    count = process_wazuh_vulnerabilities(db, conn.id, raw_vulns)
+    count = process_wazuh_vulnerabilities(db, cast(int, conn.id), raw_vulns)
     db.commit()
 
     return {"synced": count, "connection": conn.name}
-
 
 def sync_all_connections(db: Session) -> List[Dict[str, Any]]:
     conns = db.query(WazuhConnection).filter(WazuhConnection.is_active == True).all()
@@ -163,12 +185,12 @@ def sync_all_connections(db: Session) -> List[Dict[str, Any]]:
     for conn in conns:
         try:
             raw_vulns = fetch_fn(
-                conn.indexer_url,
-                conn.wazuh_user,
-                decrypt(conn.wazuh_password),
+                cast(str,conn.indexer_url),
+                cast(str,conn.wazuh_user),
+                decrypt(cast(str,conn.wazuh_password)),
             )
 
-            count = process_wazuh_vulnerabilities(db, conn.id, raw_vulns)
+            count = process_wazuh_vulnerabilities(db, cast(int,conn.id), raw_vulns)
             db.commit()
 
             results.append({"connection": conn.name, "synced": count, "ok": True})

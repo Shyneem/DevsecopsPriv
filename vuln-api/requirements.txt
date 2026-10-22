@@ -881,3 +881,4 @@ uvicorn==0.46.0 \
     --hash=sha256:bbebbcbed972d162afca128605223022bedd345b7bc7855ce66deb31487a9048 \
     --hash=sha256:fb9da0926999cc6cb22dc7cd71a94a632f078e6ae47ff683c5c420750fb7413d
     # via -r requirements.in
+slowapi==0.1.9 \

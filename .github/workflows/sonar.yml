@@ -34,6 +34,8 @@ jobs:
 
       - name: Run tests (pytest) and generate coverage reports
         working-directory: ./vuln-api
+        env:
+          JWT_SECRET: "test-secret-key-only-for-testing"
         run: |
           . .venv/bin/activate
           .venv/bin/pip install pytest pytest-cov

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from .models import User
 
-SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret-key") or os.getenv("SECRET_KEY")
+SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY")
 
 if not SECRET_KEY:
     raise RuntimeError("CRÍTICO: Define JWT_SECRET o SECRET_KEY en el .env")

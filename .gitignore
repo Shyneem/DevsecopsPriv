@@ -9,3 +9,7 @@ frontend/coverage/
 frontend/node_modules/
 certbot/*
 .idea/
+
+.env
+.env.*
+!.env.example

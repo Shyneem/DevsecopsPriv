@@ -12,7 +12,15 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from .models import User
 
-SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret-key")
+SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY")
+
+if not SECRET_KEY:
+    raise RuntimeError("CRÍTICO: Define JWT_SECRET o SECRET_KEY en el .env")
+
+# Evita el uso de la clave por defecto
+if SECRET_KEY == "dev-secret-key":
+    raise RuntimeError("CRÍTICO: No uses la clave por defecto 'dev-secret-key'")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 

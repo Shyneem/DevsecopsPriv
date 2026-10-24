@@ -2,6 +2,7 @@ import os
 import pytest
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["ENCRYPTION_KEY"] = "V3pXU0Y1ZzV3S09SclpIbmVyeXpZREp3Y0p6S2pYUTQ="
+os.environ["SECRET_KEY"] = "test-secret-key-for-ci"
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

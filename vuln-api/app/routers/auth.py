@@ -5,12 +5,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import User
-from app.auth import authenticate_user, create_access_token, get_current_user
+from app.auth import authenticate_user, create_access_token, get_current_user, get_current_admin
 from app.schemas.auth import ChangePasswordRequest, TokenResponse
 from app.services.user_service import change_user_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
 
 @router.post("/login", response_model=TokenResponse)
 def login(

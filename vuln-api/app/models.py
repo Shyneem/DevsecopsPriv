@@ -38,6 +38,9 @@ class User(Base):
     username: Mapped[str] = mapped_column(
         unique=True, index=True, nullable=False
     )
+
+    role: Mapped[str] = mapped_column(String, default="user")
+
     password_hash: Mapped[str] = mapped_column(nullable=False)
     is_active: Mapped[bool] = mapped_column(default=False)
     is_default_password: Mapped[bool] = mapped_column(

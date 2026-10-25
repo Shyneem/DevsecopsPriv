@@ -32,14 +32,13 @@ def validate_strong_password(password: str) -> None:
         )
 
 def create_default_admin(session_factory=SessionLocal) -> None:
-    """Inicializa el usuario administrador por defecto si no existe."""
     db = session_factory()
     try:
         admin_exists = db.query(User).filter(User.username == "admin").first()
         if not admin_exists:
             print("Creando usuario admin default...")
-            # REQUERIMIENTO #2: Evitar admin/admin inseguro.
-            # Generamos una contraseña aleatoria temporal (ej. con secrets)
+            
+            # Generamos una contraseña temporal segura
             alphabet = string.ascii_letters + string.digits
             temp_password = ''.join(secrets.choice(alphabet) for i in range(12))
             
@@ -47,8 +46,9 @@ def create_default_admin(session_factory=SessionLocal) -> None:
                 username="admin",
                 password_hash=hash_password(temp_password),
                 is_active=True,
-                is_default_password=True, # Esto obliga a cambiarla en el primer login
+                is_default_password=True, # Fuerza el cambio en el primer login
             )
+            
             db.add(default_admin)
             db.commit()
             print(f"ADMIN CREADO. Contraseña temporal: {temp_password} (Cámbiala al iniciar sesión)")

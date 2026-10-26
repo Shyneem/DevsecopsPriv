@@ -1,5 +1,7 @@
 # app/services/user_service.py
 import re
+import secrets
+import string
 from typing import List, Dict, Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -29,25 +31,29 @@ def validate_strong_password(password: str) -> None:
             detail=f"La contraseña no es suficientemente robusta: {', '.join(errors)}",
         )
 
-
 def create_default_admin(session_factory=SessionLocal) -> None:
-    """Inicializa el usuario administrador por defecto si no existe."""
     db = session_factory()
     try:
         admin_exists = db.query(User).filter(User.username == "admin").first()
         if not admin_exists:
             print("Creando usuario admin default...")
+            
+            # Generamos una contraseña temporal segura
+            alphabet = string.ascii_letters + string.digits
+            temp_password = ''.join(secrets.choice(alphabet) for i in range(12))
+            
             default_admin = User(
                 username="admin",
-                password_hash=hash_password("admin"),
+                password_hash=hash_password(temp_password),
                 is_active=True,
-                is_default_password=True,
+                is_default_password=True, # Fuerza el cambio en el primer login
             )
+            
             db.add(default_admin)
             db.commit()
+            print("ADMIN CREADO. Contraseña temporal generada (cámbiala al iniciar sesión).")
     finally:
         db.close()
-
 
 def change_user_password(db: Session, current_user: User, request: ChangePasswordRequest) -> Dict[str, str]:
     if not verify_password(request.old_password, current_user.password_hash):

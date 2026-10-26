@@ -51,7 +51,7 @@ def create_default_admin(session_factory=SessionLocal) -> None:
             
             db.add(default_admin)
             db.commit()
-            print(f"ADMIN CREADO. Contraseña temporal: {temp_password} (Cámbiala al iniciar sesión)")
+            print("ADMIN CREADO. Contraseña temporal generada (cámbiala al iniciar sesión).")
     finally:
         db.close()
 

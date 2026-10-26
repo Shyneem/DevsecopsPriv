@@ -2,8 +2,7 @@
 import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from .db import Base, engine
@@ -13,6 +12,7 @@ from .schemas.auth import ChangePasswordRequest
 from .schemas.users import NewUserRequest
 from .services.user_service import create_default_admin
 from .services.vuln_service import process_wazuh_vulnerabilities
+from .rate_limiter import limiter
 from .routers import auth_router, users_router, connections_router, vulns_router
 
 # Inicialización de tablas de base de datos
@@ -24,10 +24,6 @@ DOMAINS_ALLOWLIST = os.getenv("DOMAINS_ALLOWLIST", "localhost").split(",")
 
 # Crear usuario administrador por defecto
 create_default_admin()
-
-# 1. Configurar el Rate Limiter (Requerimiento #4)
-# limit="5/minute" significa máximo 5 peticiones por minuto por IP
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 # Instancia de FastAPI
 app = FastAPI(title="Vulnerability Aggregator API", root_path="/api")

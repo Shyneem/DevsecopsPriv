@@ -8,7 +8,7 @@ from app.models import User
 from app.auth import authenticate_user, create_access_token, get_current_user
 from app.schemas.auth import ChangePasswordRequest, TokenResponse
 from app.services.user_service import change_user_password
-from app.main import limiter
+from app.rate_limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

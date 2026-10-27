@@ -37,12 +37,16 @@ def create_default_admin(session_factory=SessionLocal) -> None:
         admin_exists = db.query(User).filter(User.username == "admin").first()
         if not admin_exists:
             print("Creando usuario admin default...")
+            
             default_admin = User(
-                username="admin",
-                password_hash=hash_password("admin"),
-                is_active=True,
-                is_default_password=True,
+                    username="admin",
+                    password_hash=hash_password("admin"),
+                    role="system_admin", # El primer usuario es el administrador del sistema
+                    group_id=None,       # No pertenece a ningún grupo
+                    is_active=True,
+                    is_default_password=True,
             )
+
             db.add(default_admin)
             db.commit()
     finally:
@@ -86,10 +90,13 @@ def create_user(db: Session, request: NewUserRequest) -> Dict[str, str]:
         )
 
     new_user = User(
-        username=request.username,
-        password_hash=hash_password(request.password),
-        is_default_password=True,
+            username=request.username,
+            password_hash=hash_password(request.password),
+            role=request.role,       # Se guarda el rol enviado
+            group_id=request.group_id, # Se guarda el grupo enviado
+            is_default_password=True,
     )
+    
     db.add(new_user)
     db.commit()
     return {"message": "Usuario creado"}

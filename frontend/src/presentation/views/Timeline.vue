@@ -8,7 +8,28 @@
     </div>
 
     <div v-if="statusError" class="status-banner status-error">{{ statusError }}</div>
-    <div v-if="statusWarning" class="status-banner status-warning">{{ statusWarning }}</div>
+    <div v-if="statusWarning && !warningDismissed" class="status-banner status-warning truncation-alert" role="alert">
+      <div class="warning-icon-wrapper">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="warning-svg">
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <div class="warning-body">
+        <strong v-if="isTruncated" class="warning-headline">Límite de eventos alcanzado (2.000 registros):</strong>
+        <span class="warning-text">{{ statusWarning }}</span>
+      </div>
+      <button
+        type="button"
+        class="warning-dismiss-btn"
+        @click="dismissWarning"
+        title="Descartar advertencia"
+        aria-label="Descartar advertencia"
+      >
+        ✕
+      </button>
+    </div>
 
     <TimelineFilters
       :connections="connections"
@@ -98,6 +119,7 @@ const selectedVulns = ref([])
 const period = ref('30d')
 const customDate = ref(new Date().toISOString().split('T')[0])
 const errorBanner = ref('')
+const warningDismissed = ref(false)
 
 const modalOpen = ref(false)
 const selectedEvent = ref(null)
@@ -118,6 +140,7 @@ const {
   latestSnap,
   errorMessage,
   warningMessage,
+  isTruncated,
   build,
   fetchConnectionVulns
 } = useTimelineData({
@@ -169,6 +192,7 @@ const onConnectionChange = async () => {
   agentOpts.value = []
   vulnOpts.value = []
   errorBanner.value = ''
+  warningDismissed.value = false
 
   if (!selectedConnection.value) return
 
@@ -192,6 +216,7 @@ const onConnectionChange = async () => {
 
 const buildTimeline = async () => {
   errorBanner.value = ''
+  warningDismissed.value = false
   try {
     const { initialZoom } = await build()
     setZoomLevel(initialZoom)
@@ -218,6 +243,10 @@ onMounted(async () => {
 
 const statusError = computed(() => errorBanner.value || errorMessage.value)
 const statusWarning = computed(() => warningMessage.value)
+
+const dismissWarning = () => {
+  warningDismissed.value = true
+}
 </script>
 
 <style scoped>
@@ -245,6 +274,59 @@ const statusWarning = computed(() => warningMessage.value)
   color: var(--warning);
   background: var(--warning-bg);
   border-color: rgba(217, 119, 6, 0.25);
+}
+
+.truncation-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: rgba(217, 119, 6, 0.12);
+  border: 1px solid rgba(217, 119, 6, 0.4);
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.08);
+  padding: 0.85rem 1rem;
+}
+
+.warning-icon-wrapper {
+  display: flex;
+  align-items: center;
+  color: var(--warning);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.warning-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: #92400e;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.warning-headline {
+  font-weight: 700;
+  color: #78350f;
+  font-size: 0.9rem;
+}
+
+.warning-dismiss-btn {
+  background: transparent;
+  border: none;
+  color: var(--warning);
+  cursor: pointer;
+  font-size: 1.1rem;
+  font-weight: bold;
+  padding: 0 0.4rem;
+  line-height: 1;
+  opacity: 0.75;
+  transition: opacity 0.2s, background 0.2s;
+  border-radius: 4px;
+}
+
+.warning-dismiss-btn:hover {
+  opacity: 1;
+  background: rgba(217, 119, 6, 0.2);
 }
 
 .empty-card {

@@ -270,4 +270,30 @@ describe('Timeline.vue', () => {
 
     expect(wrapper.vm.modalOpen).toBe(false)
   })
+
+  it('displays truncation warning banner when statusWarning is present', async () => {
+    const wrapper = mount(Timeline)
+    wrapper.vm.warningMessage = 'Se alcanzaron 2000 registros. El analisis puede estar truncado.'
+    wrapper.vm.isTruncated = true
+    await wrapper.vm.$nextTick()
+
+    const warningBanner = wrapper.find('.truncation-alert')
+    expect(warningBanner.exists()).toBe(true)
+    expect(warningBanner.text()).toContain('Límite de eventos alcanzado')
+    expect(warningBanner.text()).toContain('2000')
+  })
+
+  it('allows dismissing the warning banner', async () => {
+    const wrapper = mount(Timeline)
+    wrapper.vm.warningMessage = 'Alerta de prueba'
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.truncation-alert').exists()).toBe(true)
+
+    const dismissBtn = wrapper.find('.warning-dismiss-btn')
+    await dismissBtn.trigger('click')
+
+    expect(wrapper.find('.truncation-alert').exists()).toBe(false)
+    expect(wrapper.vm.warningDismissed).toBe(true)
+  })
 })

@@ -1,7 +1,7 @@
 # app/services/vuln_service.py
 import sys
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -9,23 +9,7 @@ from app.models import WazuhVulnerability, WazuhConnection, VulnerabilityHistory
 from app.crypto import decrypt
 from app.wazuh_client import fetch_all_vulns as default_fetch_all_vulns
 from app.services.connection_service import CONNECTION_NOT_FOUND
-from typing import Any, cast
 
-
-def _handle_existing_vuln(
-    db: Session, existing: WazuhVulnerability, vuln: dict
-) -> None:
-    if existing.status == "RESOLVED":
-        # 💡 cast fuerza a Pyrefly a ignorar el tipo inferido 'Never'
-        existing.status = cast(Any, "ACTIVE")
-
-        db.add(
-            VulnerabilityHistory(
-                vulnerability_id=existing.id,
-                action="REOPENED",
-                details="La vulnerabilidad fue detectada nuevamente por Wazuh",
-            )
-        )
 
 def get_fetch_all_vulns_fn():
     """Obtiene la función fetch_all_vulns, priorizando app.main si fue parcheada con @patch."""
@@ -37,7 +21,7 @@ def get_fetch_all_vulns_fn():
 
 def _handle_existing_vuln(db: Session, existing: WazuhVulnerability, vuln: dict) -> None:
     if existing.status == "RESOLVED":
-        existing.status = cast(Any,"ACTIVE")
+        existing.status = cast(Any, "ACTIVE")
         db.add(
             VulnerabilityHistory(
                 vulnerability_id=existing.id,
@@ -153,8 +137,6 @@ def process_wazuh_vulnerabilities(db: Session, conn_id: int, raw_vulns: list) ->
     _resolve_missing_vulns(db, active_vuln_dict, seen_vuln_ids)
     return count
 
-from typing import cast
-
 
 def sync_connection(db: Session, conn_id: int) -> Dict[str, Any]:
     conn = (
@@ -177,6 +159,7 @@ def sync_connection(db: Session, conn_id: int) -> Dict[str, Any]:
 
     return {"synced": count, "connection": conn.name}
 
+
 def sync_all_connections(db: Session) -> List[Dict[str, Any]]:
     conns = db.query(WazuhConnection).filter(WazuhConnection.is_active == True).all()
     results = []
@@ -185,12 +168,12 @@ def sync_all_connections(db: Session) -> List[Dict[str, Any]]:
     for conn in conns:
         try:
             raw_vulns = fetch_fn(
-                cast(str,conn.indexer_url),
-                cast(str,conn.wazuh_user),
-                decrypt(cast(str,conn.wazuh_password)),
+                cast(str, conn.indexer_url),
+                cast(str, conn.wazuh_user),
+                decrypt(cast(str, conn.wazuh_password)),
             )
 
-            count = process_wazuh_vulnerabilities(db, cast(int,conn.id), raw_vulns)
+            count = process_wazuh_vulnerabilities(db, cast(int, conn.id), raw_vulns)
             db.commit()
 
             results.append({"connection": conn.name, "synced": count, "ok": True})
@@ -206,18 +189,15 @@ def list_vulns(
     connection_id: Optional[int] = None,
     limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
+    # Delegar el cálculo de dwell time y edad a las funciones PL/pgSQL de la base de datos
     query = db.query(
         WazuhVulnerability,
-        (
-            func.extract(
-                "epoch",
-                WazuhVulnerability.last_seen - WazuhVulnerability.first_seen,
-            )
-            / 86400.0
+        func.calculate_dwell_time(
+            WazuhVulnerability.first_seen,
+            WazuhVulnerability.last_seen,
         ).label("dwell_time_days"),
-        (
-            func.extract("epoch", func.now() - WazuhVulnerability.first_seen)
-            / 86400.0
+        func.calculate_vuln_age(
+            WazuhVulnerability.first_seen,
         ).label("total_age_days"),
     )
     if connection_id:

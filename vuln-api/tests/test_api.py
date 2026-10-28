@@ -507,3 +507,21 @@ def test_vuln_without_cve_id_is_skipped(mock_fetch, client, db_session):
     res = client.post(f"/wazuh-connections/{conn.id}/sync", headers=_get_headers(client))
     assert res.json()["synced"] == 0
     assert db_session.query(WazuhVulnerability).count() == 0
+
+
+@patch("app.main.fetch_all_vulns", return_value=MOCK_VULN)
+def test_list_vulns_calculates_dwell_time_and_age_via_db(mock_fetch, client, db_session):
+    _create_user(db_session)
+    conn = _create_connection(db_session)
+    client.post(f"/wazuh-connections/{conn.id}/sync", headers=_get_headers(client))
+
+    res = client.get("/vulns", headers=_get_headers(client))
+    assert res.status_code == 200
+    items = res.json()
+    assert len(items) == 1
+    assert "dwell_time_days" in items[0]
+    assert "total_age_days" in items[0]
+    assert items[0]["dwell_time_days"] is not None
+    assert items[0]["total_age_days"] is not None
+    assert items[0]["dwell_time_days"] >= 0.0
+    assert items[0]["total_age_days"] >= 0.0

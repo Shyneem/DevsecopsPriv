@@ -40,3 +40,37 @@ BEGIN
         PERFORM add_compression_policy('wazuh_vulnerabilities', compress_after => INTERVAL '7 days', if_not_exists => TRUE);
     END IF;
 END $$;
+
+-- Funciones PL/pgSQL para cálculo de métricas temporales (Requerimiento 10)
+CREATE OR REPLACE FUNCTION calculate_dwell_time(
+    p_first_seen TIMESTAMPTZ,
+    p_last_seen TIMESTAMPTZ
+)
+RETURNS DOUBLE PRECISION
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+BEGIN
+    IF p_first_seen IS NULL OR p_last_seen IS NULL THEN
+        RETURN NULL;
+    END IF;
+    RETURN EXTRACT(EPOCH FROM (p_last_seen - p_first_seen)) / 86400.0;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION calculate_vuln_age(
+    p_first_seen TIMESTAMPTZ,
+    p_now TIMESTAMPTZ DEFAULT NOW()
+)
+RETURNS DOUBLE PRECISION
+LANGUAGE plpgsql
+STABLE
+AS $$
+BEGIN
+    IF p_first_seen IS NULL THEN
+        RETURN NULL;
+    END IF;
+    RETURN EXTRACT(EPOCH FROM (COALESCE(p_now, NOW()) - p_first_seen)) / 86400.0;
+END;
+$$;
+

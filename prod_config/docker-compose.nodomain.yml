@@ -1,20 +1,23 @@
 services:
   db-api:
-    image: postgres:15
+    image: timescale/timescaledb:latest-pg15
     container_name: db-api
     restart: unless-stopped
     env_file:
       - .env
     volumes:
       - postgres_api_data:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
       # Montamos los certificados generados (ajusta la ruta si es necesario)
       - ${HOME}/certs_db/nginx-selfsigned.crt:/var/lib/postgresql/nginx-selfsigned.crt:ro
       - ${HOME}/certs_db/nginx-selfsigned.key:/var/lib/postgresql/nginx-selfsigned.key:ro
     networks:
       - app-network
-    # Habilitamos SSL mediante flags de configuración
+    # Habilitamos SSL y TimescaleDB mediante flags de configuración
     command: 
       - "postgres"
+      - "-c"
+      - "shared_preload_libraries=timescaledb"
       - "-c"
       - "ssl=on"
       - "-c"

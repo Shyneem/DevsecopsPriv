@@ -30,6 +30,15 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
+# 1. Creamos la tabla de Grupos
+class Group(Base):
+    __tablename__ = "groups"
+    
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String, unique=True, index=True)
+    
+    # Relación para saber qué usuarios pertenecen a este grupo
+    users: Mapped[List["User"]] = relationship("User", back_populates="group")
 
 class User(Base):
     __tablename__ = "users"
@@ -38,6 +47,16 @@ class User(Base):
     username: Mapped[str] = mapped_column(
         unique=True, index=True, nullable=False
     )
+
+        # --- NUEVOS CAMPOS DEL REQUERIMIENTO ---
+    # Roles: "system_admin", "group_admin", "group_reader"
+    role: Mapped[str] = mapped_column(String, default="group_reader") 
+    group_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("groups.id"), nullable=True)
+    
+    # Relación con el grupo
+    group: Mapped[Optional["Group"]] = relationship("Group", back_populates="users")
+    # ---------------------------------------
+
     password_hash: Mapped[str] = mapped_column(nullable=False)
     is_active: Mapped[bool] = mapped_column(default=False)
     is_default_password: Mapped[bool] = mapped_column(

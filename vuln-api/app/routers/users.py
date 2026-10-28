@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import User
-from app.auth import get_current_user
+from app.auth import get_current_system_admin, get_current_user
 from app.schemas.users import NewUserRequest, CurrentUserResponse, UserResponse
 from app.services.user_service import (
     create_user as create_user_service,
@@ -28,7 +28,7 @@ def get_user_me(current_user: User = Depends(get_current_user)):
 @router.post("")
 def create_user(
     request: NewUserRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_system_admin),
     db: Session = Depends(get_db),
 ):
     return create_user_service(db, request)
@@ -45,7 +45,7 @@ def list_users(
 @router.delete("/{user_id}")
 def delete_user(
     user_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_system_admin),
     db: Session = Depends(get_db),
 ):
     return delete_user_service(db, current_user, user_id)

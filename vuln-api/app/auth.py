@@ -67,3 +67,12 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
         raise creds_exc
     return user
 
+def get_current_system_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != "system_admin":
+        raise HTTPException(status_code=403, detail="Requiere permisos de Administrador del Sistema")
+    return current_user
+
+def get_current_group_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in ["system_admin", "group_admin"]:
+        raise HTTPException(status_code=403, detail="Requiere permisos de Administrador de Grupo")
+    return current_user

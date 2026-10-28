@@ -1,4 +1,6 @@
-# Ensure shell scripts and SQL scripts use LF line endings
+# Ensure shell scripts, SQL scripts, and certificates use LF line endings
 *.sh text eol=lf
 *.sql text eol=lf
 *.py text eol=lf
+*.crt text eol=lf
+*.key text eol=lf

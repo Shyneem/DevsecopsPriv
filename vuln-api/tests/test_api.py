@@ -507,3 +507,134 @@ def test_vuln_without_cve_id_is_skipped(mock_fetch, client, db_session):
     res = client.post(f"/wazuh-connections/{conn.id}/sync", headers=_get_headers(client))
     assert res.json()["synced"] == 0
     assert db_session.query(WazuhVulnerability).count() == 0
+
+
+@patch("app.main.fetch_all_vulns", return_value=MOCK_VULN)
+def test_list_vulns_calculates_dwell_time_and_age_via_db(mock_fetch, client, db_session):
+    _create_user(db_session)
+    conn = _create_connection(db_session)
+    client.post(f"/wazuh-connections/{conn.id}/sync", headers=_get_headers(client))
+
+    res = client.get("/vulns", headers=_get_headers(client))
+    assert res.status_code == 200
+    items = res.json()
+    assert len(items) == 1
+    assert "dwell_time_days" in items[0]
+    assert "total_age_days" in items[0]
+    assert items[0]["dwell_time_days"] is not None
+    assert items[0]["total_age_days"] is not None
+    assert items[0]["dwell_time_days"] >= 0.0
+    assert items[0]["total_age_days"] >= 0.0
+
+
+@patch("app.main.fetch_all_vulns")
+def test_sync_bulk_performance_and_deduplication(mock_fetch, client, db_session):
+    bulk_raw = [
+        {
+            "agent": {"id": f"agent-{i % 10:03d}", "name": f"host-{i % 10}"},
+            "host": {"os": {"full": "Linux", "platform": "linux", "version": "1.0"}},
+            "package": {"name": f"pkg-{i}", "version": "1.0.0", "type": "deb", "architecture": "amd64"},
+            "vulnerability": {
+                "id": f"CVE-2026-{1000 + i}",
+                "severity": "High" if i % 2 == 0 else "Medium",
+                "score": {"base": 7.5, "version": "3.1"},
+                "detected_at": None,
+                "published_at": None,
+                "description": f"Bulk vulnerability {i}",
+                "reference": "https://example.com",
+                "scanner": {"vendor": "wazuh"},
+            },
+        }
+        for i in range(600)
+    ]
+    mock_fetch.return_value = bulk_raw
+    _create_user(db_session)
+    conn = _create_connection(db_session)
+    headers = _get_headers(client)
+
+    res = client.post(f"/wazuh-connections/{conn.id}/sync", headers=headers)
+    assert res.status_code == 200
+    assert res.json()["synced"] == 600
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, status="ACTIVE").count() == 600
+    assert db_session.query(VulnerabilityHistory).filter_by(action="DETECTED").count() == 600
+
+    updated_raw = bulk_raw[:500]
+    for item in updated_raw[:100]:
+        item["vulnerability"]["severity"] = "Critical"
+
+    mock_fetch.return_value = updated_raw
+    res2 = client.post(f"/wazuh-connections/{conn.id}/sync", headers=headers)
+    assert res2.status_code == 200
+    assert res2.json()["synced"] == 500
+
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, severity="Critical").count() == 100
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, status="RESOLVED").count() == 100
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, status="ACTIVE").count() == 500
+
+
+@patch("app.main.fetch_all_vulns")
+def test_list_vulns_server_pagination_and_filtering(mock_fetch, client, db_session):
+    mock_fetch.return_value = [
+        {
+            "agent": {"id": f"00{i % 3}", "name": f"host-{i % 3}"},
+            "host": {"os": {"full": "Linux", "platform": "linux", "version": "1.0"}},
+            "package": {"name": f"pkg-{i}", "version": "1.0", "type": "deb", "architecture": "amd64"},
+            "vulnerability": {
+                "id": f"CVE-2026-{2000 + i}",
+                "severity": "Critical" if i < 10 else ("High" if i < 20 else "Medium"),
+                "score": {"base": float(i), "version": "3.1"},
+                "detected_at": None,
+                "published_at": None,
+                "description": f"Target vulnerability {i}",
+                "reference": "https://example.com",
+                "scanner": {"vendor": "wazuh"},
+            },
+        }
+        for i in range(30)
+    ]
+    _create_user(db_session)
+    conn = _create_connection(db_session)
+    headers = _get_headers(client)
+    client.post(f"/wazuh-connections/{conn.id}/sync", headers=headers)
+
+    res_p1 = client.get("/vulns?page=1&page_size=10", headers=headers)
+    assert res_p1.status_code == 200
+    data_p1 = res_p1.json()
+    assert isinstance(data_p1, dict)
+    assert data_p1["total"] == 30
+    assert data_p1["page"] == 1
+    assert data_p1["page_size"] == 10
+    assert data_p1["total_pages"] == 3
+    assert len(data_p1["items"]) == 10
+
+    res_p2 = client.get("/vulns?page=2&page_size=10", headers=headers)
+    assert res_p2.status_code == 200
+    data_p2 = res_p2.json()
+    assert data_p2["page"] == 2
+    assert len(data_p2["items"]) == 10
+    p1_ids = {item["id"] for item in data_p1["items"]}
+    p2_ids = {item["id"] for item in data_p2["items"]}
+    assert p1_ids.isdisjoint(p2_ids)
+
+    res_crit = client.get("/vulns?page=1&page_size=10&severity=CRITICAL", headers=headers)
+    assert res_crit.status_code == 200
+    data_crit = res_crit.json()
+    assert data_crit["total"] == 10
+    assert all(item["severity"].upper() == "CRITICAL" for item in data_crit["items"])
+
+    res_search = client.get("/vulns?page=1&page_size=10&search=CVE-2026-2005", headers=headers)
+    assert res_search.status_code == 200
+    data_search = res_search.json()
+    assert data_search["total"] == 1
+    assert data_search["items"][0]["cve_id"] == "CVE-2026-2005"
+
+    res_sort = client.get("/vulns?page=1&page_size=10&sort_by=score_base&sort_order=asc", headers=headers)
+    assert res_sort.status_code == 200
+    scores = [item["score_base"] for item in res_sort.json()["items"]]
+    assert scores == sorted(scores)
+
+    res_legacy = client.get("/vulns?limit=5", headers=headers)
+    assert res_legacy.status_code == 200
+    data_legacy = res_legacy.json()
+    assert isinstance(data_legacy, list)
+    assert len(data_legacy) == 5

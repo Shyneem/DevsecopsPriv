@@ -1,7 +1,7 @@
 # app/services/vuln_service.py
 import sys
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional, cast
+from typing import List, Dict, Any, Optional, Set, Tuple, cast
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -19,7 +19,13 @@ def get_fetch_all_vulns_fn():
     return default_fetch_all_vulns
 
 
-def _handle_existing_vuln(db: Session, existing: WazuhVulnerability, vuln: dict) -> None:
+def _handle_existing_vuln(
+    db: Session,
+    existing: WazuhVulnerability,
+    vuln: dict,
+    now: Optional[datetime] = None,
+) -> None:
+    current_time = now or datetime.now(timezone.utc)
     if existing.status == "RESOLVED":
         existing.status = cast(Any, "ACTIVE")
         db.add(
@@ -42,32 +48,73 @@ def _handle_existing_vuln(db: Session, existing: WazuhVulnerability, vuln: dict)
         existing.severity = vuln.get("severity")
 
     existing.score_base = (vuln.get("score") or {}).get("base")
-    existing.last_seen = datetime.now(timezone.utc)
+    existing.last_seen = current_time
 
 
-def _resolve_missing_vulns(db: Session, active_vuln_dict: dict, seen_vuln_ids: set) -> None:
+def _resolve_missing_vulns(
+    db: Session,
+    active_vuln_dict: Dict[int, WazuhVulnerability],
+    seen_vuln_ids: Set[int],
+) -> None:
+    history_records = []
     for vuln_id, db_vuln in active_vuln_dict.items():
         if vuln_id not in seen_vuln_ids:
             db_vuln.status = "RESOLVED"
-            db.add(
+            history_records.append(
                 VulnerabilityHistory(
                     vulnerability_id=vuln_id,
                     action="RESOLVED",
                     details="Ya no es reportada por el agente (Probablemente parcheada)",
                 )
             )
+    if history_records:
+        db.add_all(history_records)
 
 
 def process_wazuh_vulnerabilities(db: Session, conn_id: int, raw_vulns: list) -> int:
-    count = 0
-    seen_vuln_ids = set()
+    """Procesa e inserta/actualiza masivamente las vulnerabilidades de Wazuh, eliminando el problema N+1.
+    
+    1. Precarga en memoria todas las vulnerabilidades de la conexión en una sola consulta SQL.
+    2. Realiza comparaciones O(1) usando diccionarios indexados por clave compuesta.
+    3. Inserta y genera historial en lotes para minimizar viajes de ida y vuelta a la BD.
+    """
+    now = datetime.now(timezone.utc)
+    seen_vuln_ids: Set[int] = set()
 
-    active_vulns_in_db = (
+    # 1. Precarga única de todas las vulnerabilidades de la conexión
+    existing_vulns = (
         db.query(WazuhVulnerability)
-        .filter_by(connection_id=conn_id, status="ACTIVE")
+        .filter_by(connection_id=conn_id)
         .all()
     )
-    active_vuln_dict = {v.id: v for v in active_vulns_in_db}
+    existing_map: Dict[Tuple[str, str, str, str], WazuhVulnerability] = {
+        (v.agent_id, v.package_name, v.package_version, v.cve_id): v
+        for v in existing_vulns
+    }
+    active_vuln_dict: Dict[int, WazuhVulnerability] = {
+        v.id: v for v in existing_vulns if v.status == "ACTIVE"
+    }
+
+    pending_new_vulns: List[WazuhVulnerability] = []
+    count = 0
+    BATCH_SIZE = 500
+
+    def _flush_pending_new_vulns():
+        if not pending_new_vulns:
+            return
+        db.flush()
+        history_records = [
+            VulnerabilityHistory(
+                vulnerability_id=nv.id,
+                action="DETECTED",
+                details="Vulnerabilidad identificada por primera vez",
+            )
+            for nv in pending_new_vulns
+        ]
+        db.add_all(history_records)
+        for nv in pending_new_vulns:
+            seen_vuln_ids.add(nv.id)
+        pending_new_vulns.clear()
 
     for v in raw_vulns:
         agent = v.get("agent", {})
@@ -75,41 +122,38 @@ def process_wazuh_vulnerabilities(db: Session, conn_id: int, raw_vulns: list) ->
         pkg = v.get("package", {})
         vuln = v.get("vulnerability", {})
 
-        if not vuln.get("id"):
+        cve_id = vuln.get("id")
+        if not cve_id:
             continue
 
-        existing = (
-            db.query(WazuhVulnerability)
-            .filter_by(
-                connection_id=conn_id,
-                agent_id=agent.get("id"),
-                package_name=pkg.get("name"),
-                package_version=pkg.get("version"),
-                cve_id=vuln.get("id"),
-            )
-            .first()
-        )
+        agent_id = agent.get("id")
+        pkg_name = pkg.get("name")
+        pkg_version = pkg.get("version")
+        key = (agent_id, pkg_name, pkg_version, cve_id)
+
+        existing = existing_map.get(key)
 
         if existing:
+            if existing.id is None:
+                _flush_pending_new_vulns()
             seen_vuln_ids.add(existing.id)
-            existing.last_seen = datetime.now(timezone.utc)
-            _handle_existing_vuln(db, existing, vuln)
+            _handle_existing_vuln(db, existing, vuln, now=now)
         else:
-            detected_at = vuln.get("detected_at") or datetime.now(timezone.utc)
+            detected_at = vuln.get("detected_at") or now
             first_seen = detected_at
             new_vuln = WazuhVulnerability(
                 connection_id=conn_id,
                 status="ACTIVE",
-                agent_id=agent.get("id"),
+                agent_id=agent_id,
                 agent_name=agent.get("name"),
                 os_full=osinfo.get("full"),
                 os_platform=osinfo.get("platform"),
                 os_version=osinfo.get("version"),
-                package_name=pkg.get("name"),
-                package_version=pkg.get("version"),
+                package_name=pkg_name,
+                package_version=pkg_version,
                 package_type=pkg.get("type"),
                 package_arch=pkg.get("architecture"),
-                cve_id=vuln.get("id"),
+                cve_id=cve_id,
                 severity=vuln.get("severity"),
                 score_base=(vuln.get("score") or {}).get("base"),
                 score_version=(vuln.get("score") or {}).get("version"),
@@ -122,18 +166,18 @@ def process_wazuh_vulnerabilities(db: Session, conn_id: int, raw_vulns: list) ->
                 last_seen=first_seen,
             )
             db.add(new_vuln)
-            db.flush()
-            db.add(
-                VulnerabilityHistory(
-                    vulnerability_id=new_vuln.id,
-                    action="DETECTED",
-                    details="Vulnerabilidad identificada por primera vez",
-                )
-            )
-            seen_vuln_ids.add(new_vuln.id)
+            existing_map[key] = new_vuln
+            pending_new_vulns.append(new_vuln)
+
+            if len(pending_new_vulns) >= BATCH_SIZE:
+                _flush_pending_new_vulns()
 
         count += 1
 
+    # Asegurar flush de los últimos elementos acumulados
+    _flush_pending_new_vulns()
+
+    # Resolver las vulnerabilidades activas previas que ya no vinieron en el scan
     _resolve_missing_vulns(db, active_vuln_dict, seen_vuln_ids)
     return count
 

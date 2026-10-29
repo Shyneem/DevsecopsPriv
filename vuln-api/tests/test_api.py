@@ -525,3 +525,48 @@ def test_list_vulns_calculates_dwell_time_and_age_via_db(mock_fetch, client, db_
     assert items[0]["total_age_days"] is not None
     assert items[0]["dwell_time_days"] >= 0.0
     assert items[0]["total_age_days"] >= 0.0
+
+
+@patch("app.main.fetch_all_vulns")
+def test_sync_bulk_performance_and_deduplication(mock_fetch, client, db_session):
+    bulk_raw = [
+        {
+            "agent": {"id": f"agent-{i % 10:03d}", "name": f"host-{i % 10}"},
+            "host": {"os": {"full": "Linux", "platform": "linux", "version": "1.0"}},
+            "package": {"name": f"pkg-{i}", "version": "1.0.0", "type": "deb", "architecture": "amd64"},
+            "vulnerability": {
+                "id": f"CVE-2026-{1000 + i}",
+                "severity": "High" if i % 2 == 0 else "Medium",
+                "score": {"base": 7.5, "version": "3.1"},
+                "detected_at": None,
+                "published_at": None,
+                "description": f"Bulk vulnerability {i}",
+                "reference": "https://example.com",
+                "scanner": {"vendor": "wazuh"},
+            },
+        }
+        for i in range(600)
+    ]
+    mock_fetch.return_value = bulk_raw
+    _create_user(db_session)
+    conn = _create_connection(db_session)
+    headers = _get_headers(client)
+
+    res = client.post(f"/wazuh-connections/{conn.id}/sync", headers=headers)
+    assert res.status_code == 200
+    assert res.json()["synced"] == 600
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, status="ACTIVE").count() == 600
+    assert db_session.query(VulnerabilityHistory).filter_by(action="DETECTED").count() == 600
+
+    updated_raw = bulk_raw[:500]
+    for item in updated_raw[:100]:
+        item["vulnerability"]["severity"] = "Critical"
+
+    mock_fetch.return_value = updated_raw
+    res2 = client.post(f"/wazuh-connections/{conn.id}/sync", headers=headers)
+    assert res2.status_code == 200
+    assert res2.json()["synced"] == 500
+
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, severity="Critical").count() == 100
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, status="RESOLVED").count() == 100
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, status="ACTIVE").count() == 500

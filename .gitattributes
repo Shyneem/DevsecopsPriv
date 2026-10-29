@@ -1,8 +1,5 @@
 # Ensure shell scripts, SQL scripts, and certificates use LF line endings
 *.sh text eol=lf
 *.sql text eol=lf
-*.py text eol=lf
 *.crt text eol=lf
 *.key text eol=lf
-# Enforce LF line endings for shell scripts so they run in WSL/Linux
-*.sh text eol=lf

@@ -1,8 +1,10 @@
 # app/services/vuln_service.py
 import sys
+import math
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional, Set, Tuple, cast
+from typing import List, Dict, Any, Optional, Set, Tuple, Union, cast
 from fastapi import HTTPException
+from sqlalchemy import or_, desc, asc, case
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from app.models import WazuhVulnerability, WazuhConnection, VulnerabilityHistory
@@ -232,24 +234,111 @@ def list_vulns(
     db: Session,
     connection_id: Optional[int] = None,
     limit: Optional[int] = None,
-) -> List[Dict[str, Any]]:
-    # Delegar el cálculo de dwell time y edad a las funciones PL/pgSQL de la base de datos
+    page: Optional[int] = None,
+    page_size: int = 25,
+    severity: Optional[str] = None,
+    status: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    cve_id: Optional[str] = None,
+    package_name: Optional[str] = None,
+    search: Optional[str] = None,
+    sort_by: Optional[str] = "detected_at",
+    sort_order: Optional[str] = "desc",
+) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    # 1. Columnas calculadas en la base de datos
+    dwell_expr = func.calculate_dwell_time(
+        WazuhVulnerability.first_seen,
+        WazuhVulnerability.last_seen,
+    ).label("dwell_time_days")
+    age_expr = func.calculate_vuln_age(
+        WazuhVulnerability.first_seen,
+    ).label("total_age_days")
+
     query = db.query(
         WazuhVulnerability,
-        func.calculate_dwell_time(
-            WazuhVulnerability.first_seen,
-            WazuhVulnerability.last_seen,
-        ).label("dwell_time_days"),
-        func.calculate_vuln_age(
-            WazuhVulnerability.first_seen,
-        ).label("total_age_days"),
+        dwell_expr,
+        age_expr,
     )
-    if connection_id:
+
+    # 2. Aplicación de filtros
+    if connection_id is not None:
         query = query.filter(WazuhVulnerability.connection_id == connection_id)
-    if limit is not None:
+    if severity:
+        query = query.filter(func.upper(WazuhVulnerability.severity) == severity.upper())
+    if status:
+        query = query.filter(func.upper(WazuhVulnerability.status) == status.upper())
+    if agent_id:
+        query = query.filter(WazuhVulnerability.agent_id == agent_id)
+    if agent_name:
+        query = query.filter(WazuhVulnerability.agent_name.ilike(f"%{agent_name}%"))
+    if cve_id:
+        query = query.filter(WazuhVulnerability.cve_id.ilike(f"%{cve_id}%"))
+    if package_name:
+        query = query.filter(WazuhVulnerability.package_name.ilike(f"%{package_name}%"))
+
+    # 3. Búsqueda libre multi-columna
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                WazuhVulnerability.cve_id.ilike(search_term),
+                WazuhVulnerability.package_name.ilike(search_term),
+                WazuhVulnerability.agent_name.ilike(search_term),
+                WazuhVulnerability.agent_id.ilike(search_term),
+                WazuhVulnerability.description.ilike(search_term),
+            )
+        )
+
+    # 4. Conteo total si se solicita paginación
+    total_count = None
+    if page is not None:
+        total_count = query.count()
+
+    # 5. Ordenamiento configurable
+    sort_column_map = {
+        "id": WazuhVulnerability.id,
+        "detected_at": WazuhVulnerability.detected_at,
+        "first_seen": WazuhVulnerability.first_seen,
+        "last_seen": WazuhVulnerability.last_seen,
+        "cve_id": WazuhVulnerability.cve_id,
+        "package_name": WazuhVulnerability.package_name,
+        "agent_name": WazuhVulnerability.agent_name,
+        "agent_id": WazuhVulnerability.agent_id,
+        "score_base": WazuhVulnerability.score_base,
+        "status": WazuhVulnerability.status,
+        "dwell_time_days": dwell_expr,
+        "total_age_days": age_expr,
+    }
+
+    if sort_by == "severity":
+        sort_col = case(
+            (func.upper(WazuhVulnerability.severity) == "CRITICAL", 4),
+            (func.upper(WazuhVulnerability.severity) == "HIGH", 3),
+            (func.upper(WazuhVulnerability.severity) == "MEDIUM", 2),
+            (func.upper(WazuhVulnerability.severity) == "LOW", 1),
+            else_=0,
+        )
+    else:
+        sort_col = sort_column_map.get(sort_by, WazuhVulnerability.detected_at)
+
+    if (sort_order or "desc").lower() == "asc":
+        query = query.order_by(asc(sort_col))
+    else:
+        query = query.order_by(desc(sort_col))
+
+    # 6. Paginación con LIMIT y OFFSET
+    if page is not None:
+        safe_page = max(1, page)
+        safe_page_size = max(1, min(page_size, 500))
+        offset = (safe_page - 1) * safe_page_size
+        query = query.offset(offset).limit(safe_page_size)
+    elif limit is not None:
         query = query.limit(limit)
+
     results = query.all()
-    return [
+
+    items = [
         {
             "id": v.id,
             "connection_id": v.connection_id,
@@ -266,7 +355,7 @@ def list_vulns(
             "package_arch": v.package_arch,
             "cve_id": v.cve_id,
             "severity": v.severity,
-            "score_base": float(v.score_base) if v.score_base else None,
+            "score_base": float(v.score_base) if v.score_base is not None else None,
             "score_version": v.score_version,
             "detected_at": v.detected_at,
             "published_at": v.published_at,
@@ -289,3 +378,17 @@ def list_vulns(
         }
         for v, dwell, age in results
     ]
+
+    if page is not None:
+        total = total_count if total_count is not None else len(items)
+        safe_page_size = max(1, min(page_size, 500))
+        total_pages = math.ceil(total / safe_page_size) if total > 0 else 0
+        return {
+            "items": items,
+            "total": total,
+            "page": max(1, page),
+            "page_size": safe_page_size,
+            "total_pages": total_pages,
+        }
+
+    return items

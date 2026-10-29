@@ -9,8 +9,8 @@ from app.crypto import encrypt
 
 #helpers
 
-def _create_user(db, username="admin", password="admin", is_active=True):
-    user = User(username=username, password_hash=hash_password(password), is_active=is_active)
+def _create_user(db, username="admin", password="admin", is_active=True, role="system_admin"):
+    user = User(username=username, password_hash=hash_password(password), is_active=is_active, role=role)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -570,3 +570,71 @@ def test_sync_bulk_performance_and_deduplication(mock_fetch, client, db_session)
     assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, severity="Critical").count() == 100
     assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, status="RESOLVED").count() == 100
     assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn.id, status="ACTIVE").count() == 500
+
+
+@patch("app.main.fetch_all_vulns")
+def test_list_vulns_server_pagination_and_filtering(mock_fetch, client, db_session):
+    mock_fetch.return_value = [
+        {
+            "agent": {"id": f"00{i % 3}", "name": f"host-{i % 3}"},
+            "host": {"os": {"full": "Linux", "platform": "linux", "version": "1.0"}},
+            "package": {"name": f"pkg-{i}", "version": "1.0", "type": "deb", "architecture": "amd64"},
+            "vulnerability": {
+                "id": f"CVE-2026-{2000 + i}",
+                "severity": "Critical" if i < 10 else ("High" if i < 20 else "Medium"),
+                "score": {"base": float(i), "version": "3.1"},
+                "detected_at": None,
+                "published_at": None,
+                "description": f"Target vulnerability {i}",
+                "reference": "https://example.com",
+                "scanner": {"vendor": "wazuh"},
+            },
+        }
+        for i in range(30)
+    ]
+    _create_user(db_session)
+    conn = _create_connection(db_session)
+    headers = _get_headers(client)
+    client.post(f"/wazuh-connections/{conn.id}/sync", headers=headers)
+
+    res_p1 = client.get("/vulns?page=1&page_size=10", headers=headers)
+    assert res_p1.status_code == 200
+    data_p1 = res_p1.json()
+    assert isinstance(data_p1, dict)
+    assert data_p1["total"] == 30
+    assert data_p1["page"] == 1
+    assert data_p1["page_size"] == 10
+    assert data_p1["total_pages"] == 3
+    assert len(data_p1["items"]) == 10
+
+    res_p2 = client.get("/vulns?page=2&page_size=10", headers=headers)
+    assert res_p2.status_code == 200
+    data_p2 = res_p2.json()
+    assert data_p2["page"] == 2
+    assert len(data_p2["items"]) == 10
+    p1_ids = {item["id"] for item in data_p1["items"]}
+    p2_ids = {item["id"] for item in data_p2["items"]}
+    assert p1_ids.isdisjoint(p2_ids)
+
+    res_crit = client.get("/vulns?page=1&page_size=10&severity=CRITICAL", headers=headers)
+    assert res_crit.status_code == 200
+    data_crit = res_crit.json()
+    assert data_crit["total"] == 10
+    assert all(item["severity"].upper() == "CRITICAL" for item in data_crit["items"])
+
+    res_search = client.get("/vulns?page=1&page_size=10&search=CVE-2026-2005", headers=headers)
+    assert res_search.status_code == 200
+    data_search = res_search.json()
+    assert data_search["total"] == 1
+    assert data_search["items"][0]["cve_id"] == "CVE-2026-2005"
+
+    res_sort = client.get("/vulns?page=1&page_size=10&sort_by=score_base&sort_order=asc", headers=headers)
+    assert res_sort.status_code == 200
+    scores = [item["score_base"] for item in res_sort.json()["items"]]
+    assert scores == sorted(scores)
+
+    res_legacy = client.get("/vulns?limit=5", headers=headers)
+    assert res_legacy.status_code == 200
+    data_legacy = res_legacy.json()
+    assert isinstance(data_legacy, list)
+    assert len(data_legacy) == 5

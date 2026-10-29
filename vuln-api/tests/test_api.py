@@ -9,8 +9,8 @@ from app.crypto import encrypt
 
 #helpers
 
-def _create_user(db, username="admin", password="admin", is_active=True):
-    user = User(username=username, password_hash=hash_password(password), is_active=is_active)
+def _create_user(db, username="admin", password="admin", is_active=True, role="system_admin"):
+    user = User(username=username, password_hash=hash_password(password), is_active=is_active, role=role)
     db.add(user)
     db.commit()
     db.refresh(user)

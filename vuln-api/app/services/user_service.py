@@ -38,17 +38,15 @@ def create_default_admin(session_factory=SessionLocal) -> None:
         if not admin_exists:
             print("Creando usuario admin default...")
             
-            # Generamos una contraseña temporal segura
-            alphabet = string.ascii_letters + string.digits
-            temp_password = ''.join(secrets.choice(alphabet) for i in range(12))
-            
             default_admin = User(
-                username="admin",
-                password_hash=hash_password(temp_password),
-                is_active=True,
-                is_default_password=True, # Fuerza el cambio en el primer login
+                    username="admin",
+                    password_hash=hash_password("admin"),
+                    role="system_admin", # El primer usuario es el administrador del sistema
+                    group_id=None,       # No pertenece a ningún grupo
+                    is_active=True,
+                    is_default_password=True,
             )
-            
+
             db.add(default_admin)
             db.commit()
             print("ADMIN CREADO. Contraseña temporal generada (cámbiala al iniciar sesión).")
@@ -92,10 +90,13 @@ def create_user(db: Session, request: NewUserRequest) -> Dict[str, str]:
         )
 
     new_user = User(
-        username=request.username,
-        password_hash=hash_password(request.password),
-        is_default_password=True,
+            username=request.username,
+            password_hash=hash_password(request.password),
+            role=request.role,       # Se guarda el rol enviado
+            group_id=request.group_id, # Se guarda el grupo enviado
+            is_default_password=True,
     )
+    
     db.add(new_user)
     db.commit()
     return {"message": "Usuario creado"}

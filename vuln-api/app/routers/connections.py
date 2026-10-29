@@ -14,6 +14,7 @@ from app.services.connection_service import (
     test_wazuh_connection_by_id,
 )
 from app.services.vuln_service import sync_connection as sync_connection_service
+from app.auth import get_current_group_admin;
 
 router = APIRouter(prefix="/wazuh-connections", tags=["wazuh-connections"])
 
@@ -29,7 +30,7 @@ def list_connections(
 @router.post("", status_code=201)
 def create_connection(
     request: WazuhConnectionRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_group_admin),
     db: Session = Depends(get_db),
 ):
     return create_connection_service(db, request)

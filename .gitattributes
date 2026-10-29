@@ -4,3 +4,5 @@
 *.py text eol=lf
 *.crt text eol=lf
 *.key text eol=lf
+# Enforce LF line endings for shell scripts so they run in WSL/Linux
+*.sh text eol=lf

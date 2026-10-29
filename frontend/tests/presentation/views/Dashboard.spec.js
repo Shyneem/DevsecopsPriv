@@ -1129,5 +1129,37 @@ describe('Dashboard.vue', () => {
                 expect.objectContaining({ sortBy: 'dwell_time_days', sortOrder: 'asc' })
             )
         })
+
+        it('supports multi-severity filtering and presets (critical vs all)', async () => {
+            vulnService.getVulns.mockResolvedValue(paginatedResponse)
+            const wrapper = mount(Dashboard)
+            await flushPromises()
+
+            // Verify severityOptions contains standard severities
+            expect(wrapper.vm.severityOptions).toEqual(expect.arrayContaining(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']))
+
+            // Verify initial preset sends critical and active
+            expect(vulnService.getVulns).toHaveBeenCalledWith(
+                expect.objectContaining({ severity: 'CRITICAL', status: 'ACTIVE' })
+            )
+
+            // Switch to all preset
+            wrapper.vm.setPreset('all')
+            await flushPromises()
+
+            expect(wrapper.vm.activePreset).toBe('all')
+            const lastCallArgs = vulnService.getVulns.mock.calls[vulnService.getVulns.mock.calls.length - 1][0]
+            expect(lastCallArgs.severity).toBeUndefined()
+            expect(lastCallArgs.status).toBeUndefined()
+
+            // Select multiple severities
+            wrapper.vm.selectedSeverities = ['CRITICAL', 'HIGH']
+            await flushPromises()
+
+            expect(wrapper.vm.activePreset).toBe('custom')
+            expect(vulnService.getVulns).toHaveBeenLastCalledWith(
+                expect.objectContaining({ severity: 'CRITICAL,HIGH' })
+            )
+        })
     })
 })

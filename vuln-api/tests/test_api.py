@@ -322,7 +322,32 @@ def test_update_nonexistent_connection(client, db_session):
 def test_delete_connection(client, db_session):
     _create_user(db_session)
     conn = _create_connection(db_session)
-    assert client.delete(f"/wazuh-connections/{conn.id}", headers=_get_headers(client)).status_code == 200
+    vuln = WazuhVulnerability(
+        connection_id=conn.id,
+        agent_id="001",
+        cve_id="CVE-2024-0001",
+        package_name="test-pkg",
+        package_version="1.0",
+        severity="HIGH",
+        status="ACTIVE",
+    )
+    db_session.add(vuln)
+    db_session.commit()
+    db_session.refresh(vuln)
+    history = VulnerabilityHistory(
+        vulnerability_id=vuln.id,
+        action="DETECTED",
+        details="Initial detection",
+    )
+    db_session.add(history)
+    db_session.commit()
+
+    conn_id = conn.id
+    vuln_id = vuln.id
+
+    assert client.delete(f"/wazuh-connections/{conn_id}", headers=_get_headers(client)).status_code == 200
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn_id).count() == 0
+    assert db_session.query(VulnerabilityHistory).filter_by(vulnerability_id=vuln_id).count() == 0
 
 
 def test_delete_nonexistent_connection(client, db_session):

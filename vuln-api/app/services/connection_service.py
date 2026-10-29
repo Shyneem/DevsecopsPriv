@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
-from app.models import WazuhConnection
+from app.models import WazuhConnection, WazuhVulnerability, VulnerabilityHistory
 from app.crypto import encrypt, decrypt
 from app.wazuh_client import test_connection as default_test_connection
 from app.schemas.connections import WazuhConnectionRequest
@@ -112,7 +112,24 @@ def delete_connection(db: Session, conn_id: int) -> Dict[str, str]:
     conn = db.query(WazuhConnection).filter(WazuhConnection.id == conn_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail=CONNECTION_NOT_FOUND)
-    db.delete(conn)
+
+    # Bulk deletion directly in SQL to prevent Python ORM from loading 40,000+ objects into memory (fixes 504 Gateway Timeout)
+    vuln_ids_query = (
+        db.query(WazuhVulnerability.id)
+        .filter(WazuhVulnerability.connection_id == conn_id)
+    )
+    db.query(VulnerabilityHistory).filter(
+        VulnerabilityHistory.vulnerability_id.in_(vuln_ids_query)
+    ).delete(synchronize_session=False)
+
+    db.query(WazuhVulnerability).filter(
+        WazuhVulnerability.connection_id == conn_id
+    ).delete(synchronize_session=False)
+
+    db.query(WazuhConnection).filter(
+        WazuhConnection.id == conn_id
+    ).delete(synchronize_session=False)
+
     db.commit()
     return {"message": "Conexión eliminada"}
 

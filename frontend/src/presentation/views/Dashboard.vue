@@ -39,6 +39,22 @@
       </div>
 
       <div class="filter-toggle-bar">
+        <button
+          class="btn-preset"
+          :class="{ 'btn-preset-active': activePreset === 'critical' }"
+          @click="setPreset('critical')"
+          title="Ver solo vulnerabilidades críticas activas (Preset cliente Steven)"
+        >
+          🔥 Críticas Activas
+        </button>
+        <button
+          class="btn-preset"
+          :class="{ 'btn-preset-active': activePreset === 'all' }"
+          @click="setPreset('all')"
+          title="Ver todas las vulnerabilidades sin restricción de severidad o estado"
+        >
+          📋 Todas
+        </button>
         <button class="btn-filter-toggle" @click="showFilters = !showFilters">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
@@ -139,13 +155,13 @@
         <div class="f-group popover-wrap" v-click-outside="() => (dropdowns.severity = false)">
           <label>Severidad</label>
           <button class="filter-input dd-btn" @click="dropdowns.severity = !dropdowns.severity" :disabled="!severityOptions.length">
-            <span>{{ selectedSeverities.length ? selectedSeverities.length + ' sel.' : 'Todas' }}</span>
+            <span>{{ selectedSeverities.length && selectedSeverities.length < severityOptions.length ? selectedSeverities.length + ' sel.' : (activePreset === 'critical' && selectedSeverities.length === 0 ? 'CRITICAL (defecto)' : 'Todas') }}</span>
             <span>▼</span>
           </button>
           <div v-if="dropdowns.severity" class="dd-panel fade-in">
             <div class="dd-actions">
-              <span @click="selectedSeverities = [...severityOptions]">Todas</span>
-              <span @click="selectedSeverities = []">Limpiar</span>
+              <span @click="selectedSeverities = [...severityOptions]; activePreset = 'custom'">Todas</span>
+              <span @click="selectedSeverities = []; activePreset = 'all'">Limpiar</span>
             </div>
             <div class="dd-list custom-scroll">
               <label v-for="sev in severityOptions" :key="sev" class="dd-item">
@@ -441,7 +457,7 @@ const connections = ref([])
 const agentOptions = ref([])
 const vulnOptions = ref([])
 const packageOptions = ref([])
-const severityOptions = ref([])
+const severityOptions = ref(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
 
 const selectedConnection = ref('')
 const selectedStatus = ref('')
@@ -451,6 +467,9 @@ const selectedPackages = ref([])
 const selectedSeverities = ref([])
 const scoreMin = ref('')
 const scoreMax = ref('')
+
+// Preset state: 'critical' por defecto según requerimiento Steven
+const activePreset = ref('critical')
 
 // Dropdown state
 const search = reactive({ agent: '', vuln: '', package: '' })
@@ -479,7 +498,8 @@ const hasActiveFilters = computed(() => {
     selectedSeverities.value.length ||
     scoreMin.value !== '' ||
     scoreMax.value !== '' ||
-    searchQuery.value
+    searchQuery.value ||
+    activePreset.value !== 'all'
   )
 })
 
@@ -515,10 +535,12 @@ const compareValues = (a, b, key) => {
 }
 
 const updateFilterOptions = () => {
-  const agents = new Set()
-  const vulnIds = new Set()
-  const packages = new Set()
-  const severities = new Set()
+  const agents = new Set(agentOptions.value)
+  const vulnIds = new Set(vulnOptions.value)
+  const packages = new Set(packageOptions.value)
+  const standardSeverities = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
+  const severities = new Set(severityOptions.value.length ? severityOptions.value : standardSeverities)
+  standardSeverities.forEach(s => severities.add(s))
 
   vulns.value.forEach(vuln => {
     if (vuln.agent_name) agents.add(vuln.agent_name)
@@ -530,13 +552,11 @@ const updateFilterOptions = () => {
   if (agents.size || !agentOptions.value.length) agentOptions.value = Array.from(agents).sort()
   if (vulnIds.size || !vulnOptions.value.length) vulnOptions.value = Array.from(vulnIds).sort()
   if (packages.size || !packageOptions.value.length) packageOptions.value = Array.from(packages).sort()
-  if (severities.size || !severityOptions.value.length) {
-    severityOptions.value = Array.from(severities).sort((a, b) => {
-      const levelA = getSeverityLevel(a.toLowerCase())
-      const levelB = getSeverityLevel(b.toLowerCase())
-      return levelB - levelA
-    })
-  }
+  severityOptions.value = Array.from(severities).sort((a, b) => {
+    const levelA = getSeverityLevel(a.toLowerCase())
+    const levelB = getSeverityLevel(b.toLowerCase())
+    return levelB - levelA
+  })
 }
 
 const matchesConnection = (vuln) => 
@@ -742,6 +762,16 @@ watch(selectedPackages, () => {
   if (isServerPaginated.value) fetchVulns()
 })
 watch(selectedSeverities, () => {
+  if (selectedSeverities.value.length > 0) {
+    activePreset.value = 'custom'
+  }
+  currentPage.value = 1
+  if (isServerPaginated.value) fetchVulns()
+}, { deep: true })
+watch(selectedStatus, () => {
+  if (selectedStatus.value) {
+    activePreset.value = 'custom'
+  }
   currentPage.value = 1
   if (isServerPaginated.value) fetchVulns()
 })
@@ -779,7 +809,26 @@ const onConnectionChange = () => {
   }
 }
 
+const setPreset = (preset) => {
+  activePreset.value = preset
+  selectedConnection.value = ''
+  selectedAgents.value = []
+  selectedVulns.value = []
+  selectedPackages.value = []
+  selectedSeverities.value = []
+  selectedStatus.value = ''
+  scoreMin.value = ''
+  scoreMax.value = ''
+  searchQuery.value = ''
+  currentPage.value = 1
+
+  if (isServerPaginated.value) {
+    fetchVulns()
+  }
+}
+
 const clearFilters = () => {
+  activePreset.value = 'all'
   selectedConnection.value = ''
   selectedStatus.value = ''
   selectedAgents.value = []
@@ -812,15 +861,13 @@ const fetchVulns = async () => {
 
     if (selectedStatus.value) {
       params.status = selectedStatus.value
-    } else {
-      // Por defecto cargas activas (sin resolver) según especificación cliente Steven
+    } else if (activePreset.value === 'critical') {
       params.status = 'ACTIVE'
     }
 
-    if (selectedSeverities.value.length === 1) {
-      params.severity = selectedSeverities.value[0]
-    } else if (selectedSeverities.value.length === 0) {
-      // Por defecto críticas según especificación cliente Steven
+    if (selectedSeverities.value.length > 0 && selectedSeverities.value.length < severityOptions.value.length) {
+      params.severity = selectedSeverities.value.join(',')
+    } else if (activePreset.value === 'critical' && selectedSeverities.value.length === 0) {
       params.severity = 'CRITICAL'
     }
 
@@ -1407,6 +1454,34 @@ onMounted(() => {
   justify-content: flex-end;
   align-items: center;
   gap: 0.5rem;
+}
+
+.btn-preset {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.85rem;
+  background-color: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-preset:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+  border-color: var(--border);
+}
+
+.btn-preset-active {
+  background-color: rgba(34, 197, 94, 0.15);
+  color: var(--primary);
+  border-color: var(--primary);
+  font-weight: 600;
 }
 
 .btn-filter-toggle {

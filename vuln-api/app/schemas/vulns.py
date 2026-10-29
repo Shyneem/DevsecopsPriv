@@ -41,6 +41,14 @@ class VulnerabilityResponse(BaseModel):
     history: List[VulnerabilityHistoryItem] = []
 
 
+class PaginatedVulnerabilitiesResponse(BaseModel):
+    items: List[VulnerabilityResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class SyncResult(BaseModel):
     connection: str
     synced: Optional[int] = None

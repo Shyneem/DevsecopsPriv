@@ -322,7 +322,32 @@ def test_update_nonexistent_connection(client, db_session):
 def test_delete_connection(client, db_session):
     _create_user(db_session)
     conn = _create_connection(db_session)
-    assert client.delete(f"/wazuh-connections/{conn.id}", headers=_get_headers(client)).status_code == 200
+    vuln = WazuhVulnerability(
+        connection_id=conn.id,
+        agent_id="001",
+        cve_id="CVE-2024-0001",
+        package_name="test-pkg",
+        package_version="1.0",
+        severity="HIGH",
+        status="ACTIVE",
+    )
+    db_session.add(vuln)
+    db_session.commit()
+    db_session.refresh(vuln)
+    history = VulnerabilityHistory(
+        vulnerability_id=vuln.id,
+        action="DETECTED",
+        details="Initial detection",
+    )
+    db_session.add(history)
+    db_session.commit()
+
+    conn_id = conn.id
+    vuln_id = vuln.id
+
+    assert client.delete(f"/wazuh-connections/{conn_id}", headers=_get_headers(client)).status_code == 200
+    assert db_session.query(WazuhVulnerability).filter_by(connection_id=conn_id).count() == 0
+    assert db_session.query(VulnerabilityHistory).filter_by(vulnerability_id=vuln_id).count() == 0
 
 
 def test_delete_nonexistent_connection(client, db_session):
@@ -638,3 +663,38 @@ def test_list_vulns_server_pagination_and_filtering(mock_fetch, client, db_sessi
     data_legacy = res_legacy.json()
     assert isinstance(data_legacy, list)
     assert len(data_legacy) == 5
+
+    # Multi-severity filtering
+    res_multi_sev = client.get("/vulns?page=1&page_size=30&severity=CRITICAL,HIGH", headers=headers)
+    assert res_multi_sev.status_code == 200
+    data_multi_sev = res_multi_sev.json()
+    assert data_multi_sev["total"] == 20
+    assert all(item["severity"].upper() in ["CRITICAL", "HIGH"] for item in data_multi_sev["items"])
+
+    # Single and multi-status filtering
+    res_status = client.get("/vulns?page=1&page_size=10&status=ACTIVE", headers=headers)
+    assert res_status.status_code == 200
+    res_multi_status = client.get("/vulns?page=1&page_size=10&status=ACTIVE,RESOLVED", headers=headers)
+    assert res_multi_status.status_code == 200
+
+    # Filter by agent_id, agent_name, cve_id, package_name, connection_id
+    res_agent = client.get("/vulns?agent_id=001&agent_name=host-1", headers=headers)
+    assert res_agent.status_code == 200
+    res_pkg = client.get(f"/vulns?package_name=pkg-0&cve_id=CVE-2026-2000&connection_id={conn.id}", headers=headers)
+    assert res_pkg.status_code == 200
+
+
+def test_create_default_admin(db_session):
+    from app.services.user_service import create_default_admin
+    # Test when admin exists
+    _create_user(db_session)
+    create_default_admin(session_factory=lambda: db_session)
+
+    # Test when admin does not exist
+    db_session.query(User).filter_by(username="admin").delete()
+    db_session.commit()
+    create_default_admin(session_factory=lambda: db_session)
+    admin = db_session.query(User).filter_by(username="admin").first()
+    assert admin is not None
+    assert admin.role == "system_admin"
+

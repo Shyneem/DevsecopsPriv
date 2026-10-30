@@ -21,22 +21,55 @@
       {{ error }}
     </div>
 
-    <!-- Filter Toggle Bar (minimalista) -->
-    <div v-if="!loading && vulns.length > 0" class="filter-toggle-bar">
-      <button class="btn-filter-toggle" @click="showFilters = !showFilters">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+    <!-- Toolbar: Búsqueda y Botón de Filtros -->
+    <div v-if="!loading && (vulns.length > 0 || totalItemsCount > 0 || hasActiveFilters)" class="dashboard-toolbar">
+      <div class="search-box">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <span>{{ showFilters ? 'Ocultar filtros' : 'Filtros avanzados' }}</span>
-      </button>
-      <button v-if="showFilters" class="btn-clear-filters" @click="clearFilters">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 6h18"></path>
-          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-        </svg>
-        <span>Limpiar</span>
-      </button>
+        <input
+          type="text"
+          v-model="searchQuery"
+          @input="onSearchInput"
+          placeholder="Buscar por CVE, software, agente o descripción..."
+          class="search-input"
+        />
+        <button v-if="searchQuery" class="btn-clear-search" @click="clearSearch" title="Limpiar búsqueda">✕</button>
+      </div>
+
+      <div class="filter-toggle-bar">
+        <button
+          class="btn-preset"
+          :class="{ 'btn-preset-active': activePreset === 'critical' }"
+          @click="setPreset('critical')"
+          title="Ver solo vulnerabilidades críticas activas (Preset cliente Steven)"
+        >
+          Críticas Activas
+        </button>
+        <button
+          class="btn-preset"
+          :class="{ 'btn-preset-active': activePreset === 'all' }"
+          @click="setPreset('all')"
+          title="Ver todas las vulnerabilidades sin restricción de severidad o estado"
+        >
+          Todas
+        </button>
+        <button class="btn-filter-toggle" @click="showFilters = !showFilters">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          </svg>
+          <span>{{ showFilters ? 'Ocultar filtros' : 'Filtros avanzados' }}</span>
+        </button>
+        <button v-if="showFilters || hasActiveFilters" class="btn-clear-filters" @click="clearFilters">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"></path>
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+          </svg>
+          <span>Limpiar</span>
+        </button>
+      </div>
     </div>
 
     <!-- Dashboard Filters -->
@@ -47,6 +80,15 @@
           <select v-model="selectedConnection" @change="onConnectionChange" class="filter-input">
             <option value="">Todas las conexiones</option>
             <option v-for="conn in connections" :key="conn.id" :value="conn.id">{{ conn.name }}</option>
+          </select>
+        </div>
+
+        <div class="f-group">
+          <label>Estado</label>
+          <select v-model="selectedStatus" class="filter-input">
+            <option value="">Todos los estados</option>
+            <option value="ACTIVE">Activas (Sin resolver)</option>
+            <option value="RESOLVED">Resueltas</option>
           </select>
         </div>
 
@@ -113,13 +155,13 @@
         <div class="f-group popover-wrap" v-click-outside="() => (dropdowns.severity = false)">
           <label>Severidad</label>
           <button class="filter-input dd-btn" @click="dropdowns.severity = !dropdowns.severity" :disabled="!severityOptions.length">
-            <span>{{ selectedSeverities.length ? selectedSeverities.length + ' sel.' : 'Todas' }}</span>
+            <span>{{ selectedSeverities.length && selectedSeverities.length < severityOptions.length ? selectedSeverities.length + ' sel.' : (activePreset === 'critical' && selectedSeverities.length === 0 ? 'CRITICAL (defecto)' : 'Todas') }}</span>
             <span>▼</span>
           </button>
           <div v-if="dropdowns.severity" class="dd-panel fade-in">
             <div class="dd-actions">
-              <span @click="selectedSeverities = [...severityOptions]">Todas</span>
-              <span @click="selectedSeverities = []">Limpiar</span>
+              <span @click="selectedSeverities = [...severityOptions]; activePreset = 'custom'">Todas</span>
+              <span @click="selectedSeverities = []; activePreset = 'all'">Limpiar</span>
             </div>
             <div class="dd-list custom-scroll">
               <label v-for="sev in severityOptions" :key="sev" class="dd-item">
@@ -151,10 +193,20 @@
     <!-- Table -->
     <div v-else class="card" style="padding: 0;">
       <div class="table-wrapper">
-        <div v-if="totalPages > 1" class="pagination-header">
-          <span class="pagination-info">
-            Mostrando {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, sortedVulns.length) }} de {{ sortedVulns.length }} vulnerabilidades
-          </span>
+        <div v-if="totalPages > 1 || totalItemsCount > 0" class="pagination-header">
+          <div class="pagination-info-group">
+            <span class="pagination-info">
+              Mostrando {{ totalItemsCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, totalItemsCount) }} de {{ totalItemsCount }} vulnerabilidades
+            </span>
+            <div class="page-size-selector">
+              <label for="page-size-select">Mostrar:</label>
+              <select id="page-size-select" v-model.number="itemsPerPage" @change="onPageSizeChange" class="filter-input-sm select-page-size">
+                <option :value="25">25 por pág.</option>
+                <option :value="50">50 por pág.</option>
+                <option :value="100">100 por pág.</option>
+              </select>
+            </div>
+          </div>
           <div class="pagination-nav">
             <button class="btn-icon-page" :disabled="currentPage === 1" @click="jumpBackward" title="Retroceder 5 páginas" aria-label="Retroceder 5 páginas">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 8 12 13 7"></polyline><polyline points="19 17 14 12 19 7"></polyline></svg>
@@ -168,7 +220,7 @@
                   v-if="typeof item === 'number'"
                   class="btn-page"
                   :class="{ 'active': currentPage === item }"
-                  @click="currentPage = item"
+                  @click="goToPage(item)"
                 >
                   {{ item }}
                 </button>
@@ -184,7 +236,7 @@
           </div>
         </div>
 
-        <table v-if="vulns.length > 0" class="vuln-table">
+        <table v-if="paginatedVulns.length > 0" class="vuln-table">
           <caption class="visually-hidden">
             Tabla de vulnerabilidades con severidad, CVE, agente, software afectado y linea de tiempo de actividad.
           </caption>
@@ -348,7 +400,7 @@
                   v-if="typeof item === 'number'"
                   class="btn-page"
                   :class="{ 'active': currentPage === item }"
-                  @click="currentPage = item"
+                  @click="goToPage(item)"
                 >
                   {{ item }}
                 </button>
@@ -364,12 +416,12 @@
           </div>
         </div>
 
-        <div v-if="vulns.length === 0 && !loading" class="empty-state" style="padding: 4rem 2rem;">
+        <div v-if="(paginatedVulns.length === 0 || totalItemsCount === 0) && !loading" class="empty-state" style="padding: 4rem 2rem;">
           <div class="shield-box">
-             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>
+             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           </div>
-          <p style="color: var(--text-main); font-weight: 500; font-size: 1.1rem; margin-bottom: 0.5rem;">No hay conexiones activas</p>
-          <p style="color: var(--text-muted); font-size: 0.9rem;">El sistema no reporta conexiones activas actualmente.</p>
+          <p style="color: var(--text-main); font-weight: 500; font-size: 1.1rem; margin-bottom: 0.5rem;">No se encontraron vulnerabilidades</p>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">Prueba modificando los filtros de búsqueda o la severidad seleccionada.</p>
         </div>
       </div>
     </div>
@@ -389,19 +441,26 @@ const sortKey = ref('last_seen')
 const sortOrder = ref('desc')
 const showFilters = ref(false)
 
-// Paginación
+// Paginación y Servidor
 const currentPage = ref(1)
-const itemsPerPage = 50
+const itemsPerPage = ref(50)
 const pageJump = 10
+const isServerPaginated = ref(false)
+const serverVulns = ref([])
+const serverTotal = ref(0)
+const serverTotalPages = ref(1)
+const searchQuery = ref('')
+let searchDebounceTimer = null
 
 // Filter state
 const connections = ref([])
 const agentOptions = ref([])
 const vulnOptions = ref([])
 const packageOptions = ref([])
-const severityOptions = ref([])
+const severityOptions = ref(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
 
 const selectedConnection = ref('')
+const selectedStatus = ref('')
 const selectedAgents = ref([])
 const selectedVulns = ref([])
 const selectedPackages = ref([])
@@ -409,11 +468,14 @@ const selectedSeverities = ref([])
 const scoreMin = ref('')
 const scoreMax = ref('')
 
+// Preset state: 'critical' por defecto según requerimiento Steven
+const activePreset = ref('critical')
+
 // Dropdown state
 const search = reactive({ agent: '', vuln: '', package: '' })
 const dropdowns = reactive({ agents: false, vulns: false, packages: false, severity: false })
 
-// Filtered lists for search
+// Filtered lists for dropdown search
 const filteredAgents = computed(() =>
   agentOptions.value.filter(agent => agent.toLowerCase().includes(search.agent.toLowerCase()))
 )
@@ -425,6 +487,21 @@ const filteredCVEOptions = computed(() =>
 const filteredPackages = computed(() =>
   packageOptions.value.filter(pkg => pkg.toLowerCase().includes(search.package.toLowerCase()))
 )
+
+const hasActiveFilters = computed(() => {
+  return !!(
+    selectedConnection.value ||
+    selectedStatus.value ||
+    selectedAgents.value.length ||
+    selectedVulns.value.length ||
+    selectedPackages.value.length ||
+    selectedSeverities.value.length ||
+    scoreMin.value !== '' ||
+    scoreMax.value !== '' ||
+    searchQuery.value ||
+    activePreset.value !== 'all'
+  )
+})
 
 const getSeverityLevel = (s) => {
   if (!s) return 0
@@ -457,12 +534,13 @@ const compareValues = (a, b, key) => {
   }
 }
 
-
 const updateFilterOptions = () => {
-  const agents = new Set()
-  const vulnIds = new Set()
-  const packages = new Set()
-  const severities = new Set()
+  const agents = new Set(agentOptions.value)
+  const vulnIds = new Set(vulnOptions.value)
+  const packages = new Set(packageOptions.value)
+  const standardSeverities = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
+  const severities = new Set(severityOptions.value.length ? severityOptions.value : standardSeverities)
+  standardSeverities.forEach(s => severities.add(s))
 
   vulns.value.forEach(vuln => {
     if (vuln.agent_name) agents.add(vuln.agent_name)
@@ -471,9 +549,9 @@ const updateFilterOptions = () => {
     if (vuln.severity) severities.add(vuln.severity.toUpperCase())
   })
 
-  agentOptions.value = Array.from(agents).sort()
-  vulnOptions.value = Array.from(vulnIds).sort()
-  packageOptions.value = Array.from(packages).sort()
+  if (agents.size || !agentOptions.value.length) agentOptions.value = Array.from(agents).sort()
+  if (vulnIds.size || !vulnOptions.value.length) vulnOptions.value = Array.from(vulnIds).sort()
+  if (packages.size || !packageOptions.value.length) packageOptions.value = Array.from(packages).sort()
   severityOptions.value = Array.from(severities).sort((a, b) => {
     const levelA = getSeverityLevel(a.toLowerCase())
     const levelB = getSeverityLevel(b.toLowerCase())
@@ -512,6 +590,9 @@ const matchesScore = (vuln) => {
 }
 
 const filteredVulns = computed(() => {
+  if (isServerPaginated.value) {
+    return serverVulns.value
+  }
   return vulns.value.filter(vuln => {
     return matchesConnection(vuln) &&
            matchesAgent(vuln) &&
@@ -523,6 +604,9 @@ const filteredVulns = computed(() => {
 })
 
 const sortedVulns = computed(() => {
+  if (isServerPaginated.value) {
+    return serverVulns.value
+  }
   if (!sortKey.value) return filteredVulns.value
   return [...filteredVulns.value].sort((a, b) => {
     const cmp = compareValues(a, b, sortKey.value)
@@ -532,12 +616,25 @@ const sortedVulns = computed(() => {
 
 // === LOGICA DE PAGINACION ===
 const totalPages = computed(() => {
-  return Math.ceil(sortedVulns.value.length / itemsPerPage)
+  if (isServerPaginated.value) {
+    return serverTotalPages.value
+  }
+  return Math.ceil(sortedVulns.value.length / itemsPerPage.value) || 1
+})
+
+const totalItemsCount = computed(() => {
+  if (isServerPaginated.value) {
+    return serverTotal.value
+  }
+  return sortedVulns.value.length
 })
 
 const paginatedVulns = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage
-  const end = start + itemsPerPage
+  if (isServerPaginated.value) {
+    return serverVulns.value
+  }
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  const end = start + itemsPerPage.value
   return sortedVulns.value.slice(start, end)
 })
 
@@ -552,7 +649,7 @@ const visiblePages = computed(() => {
     return pages
   }
 
-  const middleSlots = maxNumericButtons - 2 // Reservamos 1 y ultima pagina.
+  const middleSlots = maxNumericButtons - 2
   pages.push(1)
 
   let start = Math.max(2, current - Math.floor(middleSlots / 2))
@@ -571,33 +668,117 @@ const visiblePages = computed(() => {
   return pages
 })
 
+const goToPage = (p) => {
+  if (currentPage.value !== p && p >= 1 && p <= totalPages.value) {
+    currentPage.value = p
+    if (isServerPaginated.value) {
+      fetchVulns()
+    }
+  }
+}
+
 const nextPage = () => {
-  if (currentPage.value < totalPages.value) currentPage.value++
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    if (isServerPaginated.value) {
+      fetchVulns()
+    }
+  }
 }
 
 const prevPage = () => {
-  if (currentPage.value > 1) currentPage.value--
+  if (currentPage.value > 1) {
+    currentPage.value--
+    if (isServerPaginated.value) {
+      fetchVulns()
+    }
+  }
 }
 
 const jumpBackward = () => {
-  currentPage.value = Math.max(1, currentPage.value - pageJump)
+  const target = Math.max(1, currentPage.value - pageJump)
+  if (currentPage.value !== target) {
+    currentPage.value = target
+    if (isServerPaginated.value) {
+      fetchVulns()
+    }
+  }
 }
 
 const jumpForward = () => {
-  currentPage.value = Math.min(totalPages.value, currentPage.value + pageJump)
+  const target = Math.min(totalPages.value, currentPage.value + pageJump)
+  if (currentPage.value !== target) {
+    currentPage.value = target
+    if (isServerPaginated.value) {
+      fetchVulns()
+    }
+  }
+}
+
+const onPageSizeChange = () => {
+  currentPage.value = 1
+  if (isServerPaginated.value) {
+    fetchVulns()
+  }
+}
+
+const onSearchInput = () => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    currentPage.value = 1
+    if (isServerPaginated.value) {
+      fetchVulns()
+    }
+  }, 300)
+}
+
+const clearSearch = () => {
+  searchQuery.value = ''
+  currentPage.value = 1
+  if (isServerPaginated.value) {
+    fetchVulns()
+  }
 }
 
 // Al filtrar o ordenar volvemos a la pagina 1
-watch(selectedConnection, () => { currentPage.value = 1 })
-watch(selectedAgents, () => { currentPage.value = 1 })
-watch(selectedVulns, () => { currentPage.value = 1 })
-watch(selectedPackages, () => { currentPage.value = 1 })
-watch(selectedSeverities, () => { currentPage.value = 1 })
+watch(selectedConnection, () => {
+  currentPage.value = 1
+  if (isServerPaginated.value) fetchVulns()
+})
+watch(selectedStatus, () => {
+  currentPage.value = 1
+  if (isServerPaginated.value) fetchVulns()
+})
+watch(selectedAgents, () => {
+  currentPage.value = 1
+  if (isServerPaginated.value) fetchVulns()
+})
+watch(selectedVulns, () => {
+  currentPage.value = 1
+  if (isServerPaginated.value) fetchVulns()
+})
+watch(selectedPackages, () => {
+  currentPage.value = 1
+  if (isServerPaginated.value) fetchVulns()
+})
+watch(selectedSeverities, () => {
+  if (selectedSeverities.value.length > 0) {
+    activePreset.value = 'custom'
+  }
+  currentPage.value = 1
+  if (isServerPaginated.value) fetchVulns()
+}, { deep: true })
+watch(selectedStatus, () => {
+  if (selectedStatus.value) {
+    activePreset.value = 'custom'
+  }
+  currentPage.value = 1
+  if (isServerPaginated.value) fetchVulns()
+})
 watch(scoreMin, () => { currentPage.value = 1 })
 watch(scoreMax, () => { currentPage.value = 1 })
 watch(sortKey, () => { currentPage.value = 1 })
 watch(sortOrder, () => { currentPage.value = 1 })
-
 
 const sortBy = (key) => {
   if (sortKey.value !== key) {
@@ -609,38 +790,128 @@ const sortBy = (key) => {
     sortKey.value = ''
     sortOrder.value = ''
   }
+  currentPage.value = 1
+  if (isServerPaginated.value) {
+    fetchVulns()
+  }
 }
 
 const onConnectionChange = () => {
-  // When connection changes, clear dependent filters
   selectedAgents.value = []
   selectedVulns.value = []
   selectedPackages.value = []
   selectedSeverities.value = []
   scoreMin.value = ''
   scoreMax.value = ''
+  currentPage.value = 1
+  if (isServerPaginated.value) {
+    fetchVulns()
+  }
 }
 
-const clearFilters = () => {
+const setPreset = (preset) => {
+  activePreset.value = preset
   selectedConnection.value = ''
   selectedAgents.value = []
   selectedVulns.value = []
   selectedPackages.value = []
   selectedSeverities.value = []
+  selectedStatus.value = ''
   scoreMin.value = ''
   scoreMax.value = ''
+  searchQuery.value = ''
+  currentPage.value = 1
+
+  if (isServerPaginated.value) {
+    fetchVulns()
+  }
+}
+
+const clearFilters = () => {
+  activePreset.value = 'all'
+  selectedConnection.value = ''
+  selectedStatus.value = ''
+  selectedAgents.value = []
+  selectedVulns.value = []
+  selectedPackages.value = []
+  selectedSeverities.value = []
+  scoreMin.value = ''
+  scoreMax.value = ''
+  searchQuery.value = ''
+  currentPage.value = 1
+  if (isServerPaginated.value) {
+    fetchVulns()
+  }
 }
 
 const fetchVulns = async () => {
   loading.value = true
   error.value = ''
   try {
-    const res = await vulnService.getVulns()
-    if (res.data && res.data.length > 0) {
-      vulns.value = res.data
+    const params = {
+      page: currentPage.value,
+      pageSize: itemsPerPage.value,
+      sortBy: sortKey.value || 'detected_at',
+      sortOrder: sortOrder.value || 'desc',
+    }
+
+    if (selectedConnection.value) {
+      params.connectionId = selectedConnection.value
+    }
+
+    if (selectedStatus.value) {
+      params.status = selectedStatus.value
+    } else if (activePreset.value === 'critical') {
+      params.status = 'ACTIVE'
+    }
+
+    if (selectedSeverities.value.length > 0 && selectedSeverities.value.length < severityOptions.value.length) {
+      params.severity = selectedSeverities.value.join(',')
+    } else if (activePreset.value === 'critical' && selectedSeverities.value.length === 0) {
+      params.severity = 'CRITICAL'
+    }
+
+    if (searchQuery.value && searchQuery.value.trim()) {
+      params.search = searchQuery.value.trim()
+    }
+
+    if (selectedAgents.value.length === 1) {
+      params.agentName = selectedAgents.value[0]
+    }
+    if (selectedVulns.value.length === 1) {
+      params.cveId = selectedVulns.value[0]
+    }
+    if (selectedPackages.value.length === 1) {
+      params.packageName = selectedPackages.value[0]
+    }
+
+    const res = await vulnService.getVulns(params)
+
+    if (res?.data) {
+      if (res.data.items !== undefined) {
+        // Respuesta paginada server-side
+        isServerPaginated.value = true
+        serverVulns.value = res.data.items || []
+        serverTotal.value = res.data.total || 0
+        serverTotalPages.value = res.data.total_pages || 1
+        currentPage.value = res.data.page || 1
+        vulns.value = res.data.items || []
+      } else if (Array.isArray(res.data)) {
+        // Lista directa (compatibilidad hacia atrás y pruebas unitarias con mock)
+        isServerPaginated.value = false
+        vulns.value = res.data
+        serverTotal.value = res.data.length
+        serverTotalPages.value = Math.ceil(res.data.length / itemsPerPage.value) || 1
+      } else {
+        vulns.value = []
+        serverTotal.value = 0
+        serverTotalPages.value = 1
+      }
       updateFilterOptions()
     } else {
       vulns.value = []
+      serverTotal.value = 0
+      serverTotalPages.value = 1
     }
   } catch (err) {
     console.error('Error fetching vulns:', err)
@@ -715,12 +986,18 @@ const isRecentlySeen = (lastSeenDate) => {
 }
 
 const getTimelineProgress = (vuln) => {
-  
   if (vuln.dwell_time_days !== undefined && vuln.total_age_days !== undefined && vuln.total_age_days > 0) {
     if (vuln.dwell_time_days === 0) return 0
     return Math.min(100, Math.max(5, (vuln.dwell_time_days / vuln.total_age_days) * 100))
   }
-  
+  if (vuln.first_seen && vuln.last_seen) {
+    const first = new Date(vuln.first_seen).getTime()
+    const last = new Date(vuln.last_seen).getTime()
+    const diff = last - first
+    if (diff <= 0) return 0
+    const age = Math.max(1, Date.now() - first)
+    return Math.min(100, Math.max(5, (diff / age) * 100 || 50))
+  }
   return 0
 }
 
@@ -813,7 +1090,7 @@ onMounted(() => {
   background-color: #f3f4f6;
   border-radius: 2px;
   margin-left: 10px;
-  width: 2px; /* Vertical track look */
+  width: 2px;
   height: 12px;
   position: relative;
 }
@@ -827,7 +1104,6 @@ onMounted(() => {
   border-radius: 2px;
 }
 
-/* Radar pulse for active items */
 .pulse-radar {
   position: relative;
 }
@@ -847,83 +1123,171 @@ onMounted(() => {
   0% { transform: scale(1); opacity: 0.4; }
   100% { transform: scale(2.5); opacity: 0; }
 }
+
 .header-actions {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1.5rem;
+  align-items: center;
+  margin-bottom: 2rem;
 }
 
-th {
+.title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.dashboard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 460px;
+  min-width: 260px;
+}
+
+.search-box .search-icon {
+  position: absolute;
+  left: 0.85rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-box .search-input {
+  width: 100%;
+  padding: 0.55rem 2.2rem 0.55rem 2.4rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.search-box .search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+}
+
+.btn-clear-search {
+  position: absolute;
+  right: 0.6rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+}
+
+.btn-clear-search:hover {
+  color: var(--text-main);
+}
+
+.pagination-info-group {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.page-size-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.select-page-size {
+  width: auto;
   cursor: pointer;
 }
 
-.sort-indicator {
-  margin-left: 0.5rem;
-  display: inline-block;
-  transition: transform 0.2s ease;
+.table-wrapper {
+  overflow-x: auto;
 }
 
-.vuln-table .col-severity { width: 12%; }
-.vuln-table .col-cve { width: 15%; }
-.vuln-table .col-agent { width: 15%; }
-.vuln-table .col-package { width: 28%; }
-.vuln-table .col-timeline { width: 20%; }
+.vuln-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.vuln-table th {
+  background-color: var(--bg-panel);
+  padding: 0.85rem 1.2rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.vuln-table th:hover {
+  color: var(--text-main);
+}
+
+.sort-indicator {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.25rem;
 }
 
 .rotate-180 {
   transform: rotate(180deg);
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-muted);
+.vuln-table td {
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-main);
+  vertical-align: middle;
 }
 
-.spinner-box {
-  margin-bottom: 1rem;
-}
-
-.shield-box {
-  width: 80px;
-  height: 80px;
-  background-color: var(--success-bg);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 1.5rem;
-  border: 4px solid rgba(16, 185, 129, 0.1);
+.vuln-table tr:hover td {
+  background-color: var(--bg-hover);
 }
 
 .font-medium {
   font-weight: 500;
 }
+
 .text-black {
   color: var(--text-main);
-  font-weight: 400;
+  font-family: monospace;
 }
 
 .agent-info {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  color: var(--text-main);
+}
+
+.agent-info svg {
   color: var(--text-muted);
 }
 
@@ -933,48 +1297,52 @@ th {
 }
 
 .pkg-name {
-  color: var(--text-main);
   font-weight: 500;
 }
 
 .pkg-version {
+  font-size: 0.75rem;
   color: var(--text-muted);
-  font-size: 0.8rem;
 }
 
-.timeline-info {
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.badge-critical {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.badge-medium {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge-low {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--primary);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.empty-state {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.8rem;
+  align-items: center;
+  justify-content: center;
+  padding: 5rem 2rem;
   color: var(--text-muted);
 }
 
-.timeline-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.timeline-label {
-  color: #6b7280;
-}
-
-.pulse-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--primary);
-  margin-right: 0.35rem;
-  box-shadow: 0 0 0 0 rgba(135, 197, 62, 0.7);
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(135, 197, 62, 0.7); }
-  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(135, 197, 62, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(135, 197, 62, 0); }
+.spinner-box, .shield-box {
+  margin-bottom: 1rem;
 }
 
 .alert {
@@ -1086,8 +1454,34 @@ th {
   justify-content: flex-end;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 0;
-  margin-bottom: 0.5rem;
+}
+
+.btn-preset {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.85rem;
+  background-color: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-preset:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+  border-color: var(--border);
+}
+
+.btn-preset-active {
+  background-color: rgba(34, 197, 94, 0.15);
+  color: var(--primary);
+  border-color: var(--primary);
+  font-weight: 600;
 }
 
 .btn-filter-toggle {

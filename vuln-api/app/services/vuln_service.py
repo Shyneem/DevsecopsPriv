@@ -265,9 +265,17 @@ def list_vulns(
     if connection_id is not None:
         query = query.filter(WazuhVulnerability.connection_id == connection_id)
     if severity:
-        query = query.filter(func.upper(WazuhVulnerability.severity) == severity.upper())
+        sev_list = [s.strip().upper() for s in severity.split(",") if s.strip()]
+        if len(sev_list) == 1:
+            query = query.filter(func.upper(WazuhVulnerability.severity) == sev_list[0])
+        elif len(sev_list) > 1:
+            query = query.filter(func.upper(WazuhVulnerability.severity).in_(sev_list))
     if status:
-        query = query.filter(func.upper(WazuhVulnerability.status) == status.upper())
+        stat_list = [s.strip().upper() for s in status.split(",") if s.strip()]
+        if len(stat_list) == 1:
+            query = query.filter(func.upper(WazuhVulnerability.status) == stat_list[0])
+        elif len(stat_list) > 1:
+            query = query.filter(func.upper(WazuhVulnerability.status).in_(stat_list))
     if agent_id:
         query = query.filter(WazuhVulnerability.agent_id == agent_id)
     if agent_name:

@@ -1018,4 +1018,148 @@ describe('Dashboard.vue', () => {
             expect(wrapper.vm.dropdowns.severity).toBe(false)
         })
     })
+
+    describe('Server-side pagination, search, sorting and filtering', () => {
+        const paginatedResponse = {
+            data: {
+                items: [
+                    {
+                        id: 101,
+                        connection_name: 'Prod Cluster',
+                        severity: 'critical',
+                        cve_id: 'CVE-2024-9999',
+                        first_seen: new Date().toISOString(),
+                        last_seen: new Date().toISOString(),
+                        agent_name: 'web-prod-01',
+                        package_name: 'nginx',
+                        package_version: '1.24',
+                        score_base: 9.8,
+                    }
+                ],
+                total: 85,
+                page: 1,
+                page_size: 25,
+                total_pages: 4
+            }
+        }
+
+        it('handles server-side paginated response correctly', async () => {
+            vulnService.getVulns.mockResolvedValueOnce(paginatedResponse)
+            const wrapper = mount(Dashboard)
+            await flushPromises()
+
+            expect(wrapper.vm.isServerPaginated).toBe(true)
+            expect(wrapper.vm.totalItemsCount).toBe(85)
+            expect(wrapper.vm.totalPages).toBe(4)
+            expect(wrapper.vm.paginatedVulns.length).toBe(1)
+            expect(wrapper.vm.paginatedVulns[0].cve_id).toBe('CVE-2024-9999')
+        })
+
+        it('navigates pages server-side via goToPage and nextPage', async () => {
+            vulnService.getVulns.mockResolvedValueOnce(paginatedResponse)
+            const wrapper = mount(Dashboard)
+            await flushPromises()
+
+            const page2Response = {
+                data: {
+                    items: [{ id: 102, cve_id: 'CVE-2024-8888', severity: 'critical' }],
+                    total: 85,
+                    page: 2,
+                    page_size: 25,
+                    total_pages: 4
+                }
+            }
+            vulnService.getVulns.mockResolvedValueOnce(page2Response)
+
+            wrapper.vm.goToPage(2)
+            await flushPromises()
+
+            expect(wrapper.vm.currentPage).toBe(2)
+            expect(vulnService.getVulns).toHaveBeenCalledWith(
+                expect.objectContaining({ page: 2 })
+            )
+        })
+
+        it('triggers search with debounce and clears search', async () => {
+            vi.useFakeTimers()
+            vulnService.getVulns.mockResolvedValueOnce(paginatedResponse)
+            const wrapper = mount(Dashboard)
+            await flushPromises()
+
+            vulnService.getVulns.mockResolvedValueOnce(paginatedResponse)
+            wrapper.vm.searchQuery = 'openssl'
+            wrapper.vm.onSearchInput()
+
+            expect(vulnService.getVulns).toHaveBeenCalledTimes(1)
+
+            vi.advanceTimersByTime(350)
+            await flushPromises()
+
+            expect(vulnService.getVulns).toHaveBeenCalledWith(
+                expect.objectContaining({ search: 'openssl', page: 1 })
+            )
+
+            vulnService.getVulns.mockResolvedValueOnce(paginatedResponse)
+            wrapper.vm.clearSearch()
+            await flushPromises()
+
+            expect(wrapper.vm.searchQuery).toBe('')
+            vi.useRealTimers()
+        })
+
+        it('refetches when changing page size or sorting server-side', async () => {
+            vulnService.getVulns.mockResolvedValueOnce(paginatedResponse)
+            const wrapper = mount(Dashboard)
+            await flushPromises()
+
+            vulnService.getVulns.mockResolvedValueOnce(paginatedResponse)
+            wrapper.vm.itemsPerPage = 50
+            wrapper.vm.onPageSizeChange()
+            await flushPromises()
+
+            expect(vulnService.getVulns).toHaveBeenCalledWith(
+                expect.objectContaining({ pageSize: 50, page: 1 })
+            )
+
+            vulnService.getVulns.mockResolvedValueOnce(paginatedResponse)
+            wrapper.vm.sortBy('dwell_time_days')
+            await flushPromises()
+
+            expect(vulnService.getVulns).toHaveBeenCalledWith(
+                expect.objectContaining({ sortBy: 'dwell_time_days', sortOrder: 'asc' })
+            )
+        })
+
+        it('supports multi-severity filtering and presets (critical vs all)', async () => {
+            vulnService.getVulns.mockResolvedValue(paginatedResponse)
+            const wrapper = mount(Dashboard)
+            await flushPromises()
+
+            // Verify severityOptions contains standard severities
+            expect(wrapper.vm.severityOptions).toEqual(expect.arrayContaining(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']))
+
+            // Verify initial preset sends critical and active
+            expect(vulnService.getVulns).toHaveBeenCalledWith(
+                expect.objectContaining({ severity: 'CRITICAL', status: 'ACTIVE' })
+            )
+
+            // Switch to all preset
+            wrapper.vm.setPreset('all')
+            await flushPromises()
+
+            expect(wrapper.vm.activePreset).toBe('all')
+            const lastCallArgs = vulnService.getVulns.mock.calls[vulnService.getVulns.mock.calls.length - 1][0]
+            expect(lastCallArgs.severity).toBeUndefined()
+            expect(lastCallArgs.status).toBeUndefined()
+
+            // Select multiple severities
+            wrapper.vm.selectedSeverities = ['CRITICAL', 'HIGH']
+            await flushPromises()
+
+            expect(wrapper.vm.activePreset).toBe('custom')
+            expect(vulnService.getVulns).toHaveBeenLastCalledWith(
+                expect.objectContaining({ severity: 'CRITICAL,HIGH' })
+            )
+        })
+    })
 })

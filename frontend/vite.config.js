@@ -10,6 +10,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
+  base: process.env.VITE_BASE || '/',
   test: {
     environment: 'jsdom',
     globals: true,

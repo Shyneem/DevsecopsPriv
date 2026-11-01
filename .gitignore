@@ -12,4 +12,8 @@ certbot/*
 
 .env
 .env.*
-!.env.example
+!.env.examplevuln-api/.coverage
+*.coverage
+.coverage
+vuln-api/.coverage
+*.coverage

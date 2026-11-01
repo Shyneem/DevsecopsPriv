@@ -954,11 +954,10 @@ const formatDate = (dateString) => {
 
 const isNew = (firstSeenDate) => {
   if (!firstSeenDate) return false
-  const now = new Date()
-  const firstSeen = new Date(firstSeenDate)
-  const diffTime = Math.abs(now - firstSeen)
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  return diffDays <= 1
+  const firstSeenMs = new Date(firstSeenDate).getTime()
+  if (Number.isNaN(firstSeenMs)) return false
+  const diffTime = Math.abs(Date.now() - firstSeenMs)
+  return diffTime <= 24 * 60 * 60 * 1000
 }
 
 const getSeverityClass = (severity) => {

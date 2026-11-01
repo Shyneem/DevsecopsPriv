@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ref } from 'vue'
 import useTimelineData from '@/presentation/views/timeline/useTimelineData'
 import vulnService from '@/application/services/vulnService'
@@ -16,27 +16,29 @@ describe('useTimelineData', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-02T00:00:00Z'))
 
     mockVulnData = [
       {
         id: 1,
         agent_name: 'srv-01',
         cve_id: 'CVE-2023-1234',
-        first_seen: '2026-03-07T10:00:00Z',
-        last_seen: '2026-03-08T10:00:00Z',
+        first_seen: '2026-10-30T10:00:00Z',
+        last_seen: '2026-11-01T10:00:00Z',
         history: [
-          { timestamp: '2026-03-07T12:00:00Z', action: 'DETECTED' },
-          { timestamp: '2026-03-07T15:00:00Z', action: 'RESOLVED' }
+          { timestamp: '2026-11-01T12:00:00Z', action: 'DETECTED' },
+          { timestamp: '2026-11-01T15:00:00Z', action: 'RESOLVED' }
         ]
       },
       {
         id: 2,
         agent_name: 'srv-02',
         cve_id: 'CVE-2023-5678',
-        first_seen: '2026-03-06T08:00:00Z',
-        last_seen: '2026-03-08T08:00:00Z',
+        first_seen: '2026-10-30T08:00:00Z',
+        last_seen: '2026-11-01T08:00:00Z',
         history: [
-          { timestamp: '2026-03-06T10:00:00Z', action: 'DETECTED' }
+          { timestamp: '2026-11-01T10:00:00Z', action: 'DETECTED' }
         ]
       }
     ]
@@ -46,12 +48,16 @@ describe('useTimelineData', () => {
       selectedAgents: ref([]),
       selectedVulns: ref([]),
       period: ref('7d'),
-      customDate: ref('2026-03-08'),
+      customDate: ref('2026-11-01'),
       activeZoom: ref({ slotHours: 24 }),
       getConnectionName: () => 'Demo Connection'
     }
 
     timeline = useTimelineData(defaultProps)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   describe('build function', () => {
@@ -178,7 +184,7 @@ describe('useTimelineData', () => {
       await timeline.build()
 
       // Test at a time when first vuln is resolved, second is active
-      const testTime = new Date('2026-03-07T16:00:00Z').getTime()
+      const testTime = new Date('2026-11-01T16:00:00Z').getTime()
       const snapshot = timeline.snapshotAt(testTime)
 
       expect(snapshot.total).toBe(2)
@@ -192,7 +198,7 @@ describe('useTimelineData', () => {
       vulnService.getVulns.mockResolvedValueOnce({ data: mockVulnData })
       await timeline.build()
 
-      const earlyTime = new Date('2026-03-06T00:00:00Z').getTime()
+      const earlyTime = new Date('2026-10-29T00:00:00Z').getTime()
 
       // Access the internal function (this tests the logic indirectly through snapshotAt)
       const snapshot = timeline.snapshotAt(earlyTime)
@@ -203,7 +209,7 @@ describe('useTimelineData', () => {
       vulnService.getVulns.mockResolvedValueOnce({ data: mockVulnData })
       await timeline.build()
 
-      const testTime = new Date('2026-03-06T12:00:00Z').getTime()
+      const testTime = new Date('2026-10-30T09:00:00Z').getTime()
       const snapshot = timeline.snapshotAt(testTime)
 
       expect(snapshot.details.length).toBe(1) // Only srv-02 is visible
@@ -214,12 +220,12 @@ describe('useTimelineData', () => {
       vulnService.getVulns.mockResolvedValueOnce({ data: mockVulnData })
       await timeline.build()
 
-      const testTime = new Date('2026-03-07T16:00:00Z').getTime()
+      const testTime = new Date('2026-11-01T16:00:00Z').getTime()
       const snapshot = timeline.snapshotAt(testTime)
 
       const srv01Detail = snapshot.details.find(d => d.agent_name === 'srv-01')
       expect(srv01Detail.status).toBe('RESOLVED')
-      expect(srv01Detail.resolved_at).toBe('2026-03-07T15:00:00Z')
+      expect(srv01Detail.resolved_at).toBe('2026-11-01T15:00:00Z')
     })
   })
 
@@ -229,8 +235,8 @@ describe('useTimelineData', () => {
       await timeline.build()
 
       const vuln = mockVulnData[0]
-      const startMs = new Date('2026-03-07T09:00:00Z').getTime()
-      const endMs = new Date('2026-03-07T11:00:00Z').getTime()
+      const startMs = new Date('2026-10-30T09:00:00Z').getTime()
+      const endMs = new Date('2026-10-30T11:00:00Z').getTime()
 
       // Find a painted slot that contains this time range
       const paintedSlots = timeline.allSlots.value.filter(slot => slot.painted)
@@ -252,11 +258,11 @@ describe('useTimelineData', () => {
           id: 1,
           agent_name: 'srv-01',
           cve_id: 'CVE-2023-1234',
-          first_seen: '2026-03-07T10:00:00Z',
-          last_seen: '2026-03-08T10:00:00Z',
+          first_seen: '2026-10-30T10:00:00Z',
+          last_seen: '2026-11-01T10:00:00Z',
           history: [
-            { timestamp: '2026-03-07T12:00:00Z', action: 'DETECTED' },
-            { timestamp: '2026-03-08T15:00:00Z', action: 'RESOLVED' } // Next day
+            { timestamp: '2026-10-31T12:00:00Z', action: 'DETECTED' },
+            { timestamp: '2026-11-01T15:00:00Z', action: 'RESOLVED' }
           ]
         }
       ]
@@ -270,17 +276,15 @@ describe('useTimelineData', () => {
 
       await historyTimeline.build()
 
-      // Find the slot for March 8 (next day)
-      const march8Slots = historyTimeline.allSlots.value.filter(slot => {
+      const resolutionSlots = historyTimeline.allSlots.value.filter(slot => {
         const slotDate = new Date(slot.startMs)
-        return slotDate.getDate() === 8 && slot.painted
+        return slotDate.getDate() === 1 && slot.painted
       })
 
-      expect(march8Slots.length).toBeGreaterThan(0)
-      const vulnDetail = march8Slots[0].details.find(d => d.id === 1)
+      expect(resolutionSlots.length).toBeGreaterThan(0)
+      const vulnDetail = resolutionSlots[0].details.find(d => d.id === 1)
 
-      // In the March 8 slot, the first event should be the RESOLVED at 15:00
-      expect(vulnDetail.timeline_event_at).toBe('2026-03-08T15:00:00Z')
+      expect(vulnDetail.timeline_event_at).toBe('2026-11-01T15:00:00Z')
       expect(vulnDetail.timeline_event_label).toBe('RESOLVED')
     })
   })
@@ -341,7 +345,7 @@ describe('useTimelineData', () => {
         id: 1,
         agent_name: 'srv-01',
         cve_id: 'CVE-2023-1234',
-        first_seen: '2026-03-07T10:00:00Z',
+        first_seen: '2026-10-30T10:00:00Z',
         history: []
       }]
 
@@ -373,7 +377,7 @@ describe('useTimelineData', () => {
         id: 1,
         agent_name: 'srv-01',
         cve_id: 'CVE-2023-1234',
-        first_seen: '2026-03-07T10:00:00Z',
+        first_seen: '2026-10-30T10:00:00Z',
         history: null
       }]
 
@@ -388,7 +392,8 @@ describe('useTimelineData', () => {
     it('sets warning when limit is reached', async () => {
       const largeData = Array.from({ length: 2000 }, (_, i) => ({
         id: i,
-        first_seen: '2026-03-07T10:00:00Z',
+        first_seen: '2026-10-30T10:00:00Z',
+        cve_id: `CVE-2023-${String(i).padStart(4, '0')}`,
         history: []
       }))
 

@@ -211,7 +211,7 @@ describe('Timeline.vue', () => {
   it('computes yearLabel correctly with data', async () => {
     vulnService.getVulns.mockResolvedValueOnce({
       data: [
-        { agent_name: 'Agent 1', cve_id: 'CVE-001', first_seen: '2025-01-01T00:00:00Z' },
+        { agent_name: 'Agent 1', cve_id: 'CVE-001', first_seen: '2026-01-01T00:00:00Z' },
         { agent_name: 'Agent 1', cve_id: 'CVE-002', first_seen: '2026-01-01T00:00:00Z' }
       ]
     })

@@ -52,7 +52,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8104:80"
+      - "8104:443"
     volumes:
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:

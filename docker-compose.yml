@@ -10,17 +10,11 @@ services:
       - ./db-init:/docker-entrypoint-initdb.d:ro
     networks:
       - app-network
-    # Habilitamos SSL y TimescaleDB mediante flags de configuración
+   
     command: 
       - "postgres"
       - "-c"
       - "shared_preload_libraries=timescaledb"
-      - "-c"
-      - "ssl=on"
-      - "-c"
-      - "ssl_cert_file=/var/lib/postgresql/nginx-selfsigned.crt"
-      - "-c"
-      - "ssl_key_file=/var/lib/postgresql/nginx-selfsigned.key"
     healthcheck:
       # Nota: pg_isready funciona por defecto aunque SSL esté activo
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -33,7 +27,7 @@ services:
     container_name: api
     environment:
       # Añadimos ?sslmode=require al final de la URL
-      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db-api:5432/${POSTGRES_DB}
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db-api:5432/${POSTGRES_DB}"
     depends_on:
       db-api:
         condition: service_healthy
@@ -58,7 +52,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8104:443"
+      - "8104:80"
     volumes:
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:

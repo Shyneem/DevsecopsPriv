@@ -33,3 +33,27 @@ export const badge = type => {
   if (type === 'resolution') return 'RESUELTA'
   return 'MIXTO'
 }
+
+export const getSeverityCategory = severity => {
+  const s = String(severity || '').toLowerCase()
+  if (s.includes('crit')) return 'critical'
+  if (s.includes('high') || s.includes('alta')) return 'high'
+  if (s.includes('med')) return 'medium'
+  return 'low'
+}
+
+export const getSeverityWeight = severity => {
+  const cat = getSeverityCategory(severity)
+  if (cat === 'critical') return 4
+  if (cat === 'high') return 3
+  if (cat === 'medium') return 2
+  return 1
+}
+
+export const getSeverityLabel = severity => {
+  const cat = getSeverityCategory(severity)
+  if (cat === 'critical') return 'CRÍTICA'
+  if (cat === 'high') return 'ALTA'
+  if (cat === 'medium') return 'MEDIA'
+  return 'BAJA'
+}

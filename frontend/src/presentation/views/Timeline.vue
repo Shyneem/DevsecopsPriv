@@ -3,7 +3,7 @@
     <div class="header-actions">
       <div>
         <h1 class="title">Linea del tiempo</h1>
-        <p class="subtitle">Vista infografica con linea continua y slots con o sin cambios.</p>
+        <p class="subtitle">Vista infográfica interactiva con desglose continuo por eventos, equipos y vulnerabilidades (CVE).</p>
       </div>
     </div>
 
@@ -68,6 +68,10 @@
       :can-move-right="canMoveRight"
       :can-zoom-in="canZoomIn"
       :can-zoom-out="canZoomOut"
+      :agent-summary-list="agentSummaryList"
+      :cve-summary-list="cveSummaryList"
+      :view-mode="viewMode"
+      @update:view-mode="viewMode = $event"
       @move-left="moveLeft"
       @move-right="moveRight"
       @zoom-in="zoomIn"
@@ -120,6 +124,7 @@ const period = ref('30d')
 const customDate = ref(new Date().toISOString().split('T')[0])
 const errorBanner = ref('')
 const warningDismissed = ref(false)
+const viewMode = ref('global')
 
 const modalOpen = ref(false)
 const selectedEvent = ref(null)
@@ -141,6 +146,8 @@ const {
   errorMessage,
   warningMessage,
   isTruncated,
+  agentSummaryList,
+  cveSummaryList,
   build,
   fetchConnectionVulns
 } = useTimelineData({
@@ -226,8 +233,30 @@ const buildTimeline = async () => {
   }
 }
 
-const openModal = slot => {
-  selectedEvent.value = slot
+const openModal = (slot, filter = null) => {
+  if (filter && filter.agent) {
+    const filteredDetails = (slot.details || []).filter(v => v.agent_name === filter.agent)
+    selectedEvent.value = {
+      ...slot,
+      cardLabel: `${slot.cardLabel} — Equipo: ${filter.agent}`,
+      details: filteredDetails,
+      total: filteredDetails.length,
+      pending: filteredDetails.filter(v => v.status === 'ACTIVE').length,
+      resolved: filteredDetails.filter(v => v.status === 'RESOLVED').length
+    }
+  } else if (filter && filter.cve) {
+    const filteredDetails = (slot.details || []).filter(v => v.cve_id === filter.cve)
+    selectedEvent.value = {
+      ...slot,
+      cardLabel: `${slot.cardLabel} — CVE: ${filter.cve}`,
+      details: filteredDetails,
+      total: filteredDetails.length,
+      pending: filteredDetails.filter(v => v.status === 'ACTIVE').length,
+      resolved: filteredDetails.filter(v => v.status === 'RESOLVED').length
+    }
+  } else {
+    selectedEvent.value = slot
+  }
   modalOpen.value = true
 }
 

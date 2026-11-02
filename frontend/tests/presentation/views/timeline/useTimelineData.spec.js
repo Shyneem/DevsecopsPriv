@@ -470,5 +470,49 @@ describe('useTimelineData', () => {
       expect(typeof timeline.paintedCount.value).toBe('number')
       expect(timeline.paintedCount.value).toBeGreaterThanOrEqual(0)
     })
+
+    it('populates byAgent and byCve in slots and computes summary lists', async () => {
+      vulnService.getVulns.mockResolvedValueOnce({
+        data: [
+          {
+            id: 10,
+            agent_name: 'srv-alpha',
+            cve_id: 'CVE-2024-9999',
+            severity: 'CRITICAL',
+            first_seen: '2026-11-01T10:00:00Z',
+            last_seen: '2026-11-01T12:00:00Z',
+            history: [{ timestamp: '2026-11-01T10:00:00Z', action: 'DETECTED' }]
+          },
+          {
+            id: 11,
+            agent_name: 'srv-beta',
+            cve_id: 'CVE-2024-8888',
+            severity: 'HIGH',
+            first_seen: '2026-11-01T11:00:00Z',
+            last_seen: '2026-11-01T12:00:00Z',
+            history: [{ timestamp: '2026-11-01T11:00:00Z', action: 'DETECTED' }]
+          }
+        ]
+      })
+
+      await timeline.build()
+
+      expect(timeline.agentSummaryList.value.length).toBe(2)
+      expect(timeline.agentSummaryList.value[0].name).toBe('srv-alpha')
+      expect(timeline.agentSummaryList.value[0].severities.critical).toBe(1)
+
+      expect(timeline.cveSummaryList.value.length).toBe(2)
+      expect(timeline.cveSummaryList.value[0].cve_id).toBe('CVE-2024-9999')
+      expect(timeline.cveSummaryList.value[0].severityCategory).toBe('critical')
+
+      const firstSlot = timeline.allSlots.value[0]
+      expect(firstSlot.byAgent).toBeDefined()
+      expect(firstSlot.byAgent['srv-alpha']).toBeDefined()
+      expect(firstSlot.byAgent['srv-alpha'].total).toBe(1)
+
+      expect(firstSlot.byCve).toBeDefined()
+      expect(firstSlot.byCve['CVE-2024-9999']).toBeDefined()
+      expect(firstSlot.byCve['CVE-2024-9999'].total).toBe(1)
+    })
   })
 })

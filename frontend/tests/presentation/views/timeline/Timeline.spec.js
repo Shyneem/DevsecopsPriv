@@ -208,6 +208,42 @@ describe('Timeline.vue', () => {
     expect(wrapper.vm.selectedEvent).toEqual(slot)
   })
 
+  it('filters details by agent when opening modal with agent filter', () => {
+    const wrapper = mount(Timeline)
+    const slot = {
+      cardLabel: '08/03',
+      details: [
+        { id: 1, agent_name: 'srv-01', cve_id: 'CVE-1', status: 'ACTIVE' },
+        { id: 2, agent_name: 'srv-02', cve_id: 'CVE-2', status: 'RESOLVED' }
+      ]
+    }
+
+    wrapper.vm.openModal(slot, { agent: 'srv-01' })
+
+    expect(wrapper.vm.modalOpen).toBe(true)
+    expect(wrapper.vm.selectedEvent.details.length).toBe(1)
+    expect(wrapper.vm.selectedEvent.details[0].agent_name).toBe('srv-01')
+    expect(wrapper.vm.selectedEvent.cardLabel).toContain('Equipo: srv-01')
+  })
+
+  it('filters details by CVE when opening modal with cve filter', () => {
+    const wrapper = mount(Timeline)
+    const slot = {
+      cardLabel: '08/03',
+      details: [
+        { id: 1, agent_name: 'srv-01', cve_id: 'CVE-2024-001', status: 'ACTIVE' },
+        { id: 2, agent_name: 'srv-02', cve_id: 'CVE-2024-002', status: 'RESOLVED' }
+      ]
+    }
+
+    wrapper.vm.openModal(slot, { cve: 'CVE-2024-001' })
+
+    expect(wrapper.vm.modalOpen).toBe(true)
+    expect(wrapper.vm.selectedEvent.details.length).toBe(1)
+    expect(wrapper.vm.selectedEvent.details[0].cve_id).toBe('CVE-2024-001')
+    expect(wrapper.vm.selectedEvent.cardLabel).toContain('CVE: CVE-2024-001')
+  })
+
   it('computes yearLabel correctly with data', async () => {
     vulnService.getVulns.mockResolvedValueOnce({
       data: [

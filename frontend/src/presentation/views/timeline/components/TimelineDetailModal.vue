@@ -7,8 +7,8 @@
           <p class="text-muted">{{ eventData.details.length }} registros</p>
         </div>
         <div class="modal-top-right">
-          <input type="text" v-model="search" placeholder="Buscar..." class="modal-search">
-          <button class="modal-close" @click="emit('close')">&times;</button>
+          <input type="text" v-model="search" placeholder="Buscar por agente, CVE o severidad..." class="modal-search">
+          <button class="modal-close" @click="emit('close')" aria-label="Cerrar modal">&times;</button>
         </div>
       </div>
       <div class="modal-content custom-scroll">
@@ -32,9 +32,13 @@
           <tbody>
             <tr v-for="vuln in rows" :key="vuln.id + '-' + vuln.cve_id">
               <td>{{ vuln.connection_name }}</td>
-              <td>{{ vuln.agent_name }}</td>
+              <td><strong>{{ vuln.agent_name }}</strong></td>
               <td><code>{{ vuln.cve_id }}</code></td>
-              <td>{{ vuln.severity }}</td>
+              <td>
+                <span class="sev-badge" :class="getSeverityCategory(vuln.severity)">
+                  {{ vuln.severity }}
+                </span>
+              </td>
               <td>
                 <span v-if="vuln.timeline_event_at">
                   {{ fmtDateTime(vuln.timeline_event_at) }}
@@ -47,7 +51,11 @@
               <td>{{ vuln.last_seen ? fmtDateTime(vuln.last_seen) : '-' }}</td>
               <td>{{ vuln.dwell_time_days !== undefined && vuln.dwell_time_days !== null ? vuln.dwell_time_days.toFixed(2) : '-' }}</td>
               <td>{{ vuln.total_age_days !== undefined && vuln.total_age_days !== null ? vuln.total_age_days.toFixed(2) : '-' }}</td>
-              <td>{{ vuln.status === 'ACTIVE' ? 'ACTIVO' : 'RESUELTO' }}</td>
+              <td>
+                <span class="status-pill" :class="vuln.status === 'ACTIVE' ? 'status-active' : 'status-resolved'">
+                  {{ vuln.status === 'ACTIVE' ? 'ACTIVO' : 'RESUELTO' }}
+                </span>
+              </td>
               <td>{{ vuln.resolved_at ? fmtDateTime(vuln.resolved_at) : '-' }}</td>
             </tr>
             <tr v-if="rows.length === 0"><td colspan="12" class="empty-row">Sin coincidencias</td></tr>
@@ -64,7 +72,11 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { fmtDateTime } from '../timelineFormatters'
+import {
+  fmtDateTime,
+  getSeverityCategory,
+  getSeverityLabel
+} from '../timelineFormatters'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -97,7 +109,7 @@ const sortBy = key => {
 
 const rows = computed(() => {
   if (!props.eventData || !props.show) return []
-  const list = props.eventData.details
+  const list = props.eventData.details || []
   
   // Filtro rápido
   let filtered = list
@@ -110,7 +122,7 @@ const rows = computed(() => {
     )
   }
 
-  // Ordenar sin copia innecesaria
+  // Ordenar
   const key = sortKey.value
   const order = sortOrder.value
   return filtered.slice().sort((a, b) => {
@@ -126,17 +138,41 @@ const rows = computed(() => {
 
 <style scoped>
 .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem; }
-.modal-box { width: 100%; max-width: 1000px; max-height: 88vh; background: var(--bg-panel); border-radius: var(--radius-lg); display: flex; flex-direction: column; overflow: hidden; }
+.modal-box { width: 100%; max-width: 1050px; max-height: 88vh; background: var(--bg-panel); border-radius: var(--radius-lg); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow-lg); }
 .modal-top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 1.2rem; border-bottom: 1px solid var(--border); }
-.modal-search { padding: 0.45rem 0.8rem; border: 1px solid var(--border); border-radius: 20px; background: var(--bg-hover); color: var(--text-main); }
-.modal-close { border: none; background: transparent; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; }
+.modal-search { padding: 0.45rem 0.8rem; border: 1px solid var(--border); border-radius: 20px; background: var(--bg-hover); color: var(--text-main); min-width: 260px; font-size: 0.82rem; }
+.modal-close { border: none; background: transparent; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; padding: 0 0.3rem; }
 .modal-top-right { display: flex; align-items: center; gap: 0.6rem; }
 .modal-content { overflow: auto; }
 .modal-table { width: 100%; border-collapse: collapse; }
 .modal-table th, .modal-table td { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
-.modal-table th { font-size: 0.67rem; text-transform: uppercase; color: var(--text-muted); background: var(--bg-hover); position: sticky; top: 0; cursor: pointer; }
+.modal-table th { font-size: 0.67rem; text-transform: uppercase; color: var(--text-muted); background: var(--bg-hover); position: sticky; top: 0; cursor: pointer; white-space: nowrap; user-select: none; }
+.modal-table th:hover { color: var(--text-main); }
 .event-chip { margin-left: 0.4rem; padding: 0.12rem 0.35rem; border-radius: 999px; background: var(--bg-hover); color: var(--text-muted); font-size: 0.64rem; font-weight: 700; }
 .empty-row { text-align: center; color: var(--text-muted); }
 .modal-bottom { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.2rem; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--text-muted); }
 .modal-outline { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+
+.sev-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.sev-badge.critical { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.sev-badge.high { background: #ffedd5; color: #9a3412; border: 1px solid #fdba74; }
+.sev-badge.medium { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+.sev-badge.low { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+
+.status-pill {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+.status-active { background: #fee2e2; color: #991b1b; }
+.status-resolved { background: #dcfce7; color: #166534; }
 </style>

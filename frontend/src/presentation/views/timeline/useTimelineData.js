@@ -1,6 +1,15 @@
 import { computed, ref } from 'vue'
 import vulnService from '../../../application/services/vulnService'
-import { DAY_MS, HOUR_MS, alignHour, fmtDDMM, fmtHour, fmtYear } from './timelineFormatters'
+import {
+  DAY_MS,
+  HOUR_MS,
+  alignHour,
+  fmtDDMM,
+  fmtHour,
+  fmtYear,
+  getSeverityCategory,
+  getSeverityWeight
+} from './timelineFormatters'
 
 const LIMIT = 2000
 
@@ -208,6 +217,69 @@ export default function useTimelineData({
     const pending = details.filter(v => v.status === 'ACTIVE').length
     const resolved = details.filter(v => v.status === 'RESOLVED').length
 
+    // Agrupación por Agente dentro de este slot
+    const byAgent = {}
+    // Agrupación por CVE dentro de este slot
+    const byCve = {}
+
+    details.forEach(vuln => {
+      // Por Agente
+      const agent = vuln.agent_name || 'Desconocido'
+      if (!byAgent[agent]) {
+        byAgent[agent] = {
+          agent_name: agent,
+          total: 0,
+          pending: 0,
+          resolved: 0,
+          type: 'detection',
+          details: [],
+          cves: new Set(),
+          severities: { critical: 0, high: 0, medium: 0, low: 0 }
+        }
+      }
+      byAgent[agent].total += 1
+      if (vuln.status === 'ACTIVE') byAgent[agent].pending += 1
+      else byAgent[agent].resolved += 1
+      byAgent[agent].details.push(vuln)
+      if (vuln.cve_id) byAgent[agent].cves.add(vuln.cve_id)
+
+      const sevCat = getSeverityCategory(vuln.severity)
+      byAgent[agent].severities[sevCat] = (byAgent[agent].severities[sevCat] || 0) + 1
+
+      // Por CVE
+      const cve = vuln.cve_id || 'Sin CVE'
+      if (!byCve[cve]) {
+        byCve[cve] = {
+          cve_id: cve,
+          total: 0,
+          pending: 0,
+          resolved: 0,
+          severity: vuln.severity,
+          type: 'detection',
+          details: [],
+          agents: new Set()
+        }
+      }
+      byCve[cve].total += 1
+      if (vuln.status === 'ACTIVE') byCve[cve].pending += 1
+      else byCve[cve].resolved += 1
+      byCve[cve].details.push(vuln)
+      if (vuln.agent_name) byCve[cve].agents.add(vuln.agent_name)
+    })
+
+    // Calcular tipo final (detection, resolution, mixed) por agente y cve
+    Object.keys(byAgent).forEach(agent => {
+      const g = byAgent[agent]
+      g.type = g.pending > 0 && g.resolved > 0 ? 'mixed' : (g.pending > 0 ? 'detection' : 'resolution')
+      g.cves = Array.from(g.cves)
+    })
+
+    Object.keys(byCve).forEach(cve => {
+      const g = byCve[cve]
+      g.type = g.pending > 0 && g.resolved > 0 ? 'mixed' : (g.pending > 0 ? 'detection' : 'resolution')
+      g.agents = Array.from(g.agents)
+    })
+
     return {
       startMs,
       endMs,
@@ -217,6 +289,8 @@ export default function useTimelineData({
       pending,
       resolved,
       details,
+      byAgent,
+      byCve,
       tickLabel: slotHours >= 24 ? fmtDDMM(startMs) : fmtHour(startMs),
       cardLabel: slotHours >= 24
         ? `${fmtDDMM(startMs)} ${fmtYear(startMs)}`
@@ -247,6 +321,88 @@ export default function useTimelineData({
     }
 
     return slots
+  })
+
+  const agentSummaryList = computed(() => {
+    if (!hasBuilt.value || !filteredVulnsData.value.length) return []
+
+    const map = new Map()
+
+    filteredVulnsData.value.forEach(vuln => {
+      const name = vuln.agent_name || 'Desconocido'
+      if (!map.has(name)) {
+        map.set(name, {
+          name,
+          totalVulns: 0,
+          activeVulns: 0,
+          resolvedVulns: 0,
+          cves: new Set(),
+          severities: { critical: 0, high: 0, medium: 0, low: 0 }
+        })
+      }
+      const entry = map.get(name)
+      entry.totalVulns += 1
+      if (vuln.status === 'RESOLVED') {
+        entry.resolvedVulns += 1
+      } else {
+        entry.activeVulns += 1
+      }
+      if (vuln.cve_id) entry.cves.add(vuln.cve_id)
+      const cat = getSeverityCategory(vuln.severity)
+      entry.severities[cat] = (entry.severities[cat] || 0) + 1
+    })
+
+    return Array.from(map.values())
+      .map(entry => ({
+        ...entry,
+        cves: Array.from(entry.cves)
+      }))
+      .sort((a, b) => {
+        if (b.activeVulns !== a.activeVulns) return b.activeVulns - a.activeVulns
+        return b.totalVulns - a.totalVulns
+      })
+  })
+
+  const cveSummaryList = computed(() => {
+    if (!hasBuilt.value || !filteredVulnsData.value.length) return []
+
+    const map = new Map()
+
+    filteredVulnsData.value.forEach(vuln => {
+      const cveId = vuln.cve_id || 'Sin CVE'
+      if (!map.has(cveId)) {
+        map.set(cveId, {
+          cve_id: cveId,
+          severity: vuln.severity,
+          severityCategory: getSeverityCategory(vuln.severity),
+          severityWeight: getSeverityWeight(vuln.severity),
+          totalOccurrences: 0,
+          activeOccurrences: 0,
+          resolvedOccurrences: 0,
+          affectedAgents: new Set(),
+          package_name: vuln.package_name || null
+        })
+      }
+      const entry = map.get(cveId)
+      entry.totalOccurrences += 1
+      if (vuln.status === 'RESOLVED') {
+        entry.resolvedOccurrences += 1
+      } else {
+        entry.activeOccurrences += 1
+      }
+      if (vuln.agent_name) entry.affectedAgents.add(vuln.agent_name)
+    })
+
+    return Array.from(map.values())
+      .map(entry => ({
+        ...entry,
+        affectedAgents: Array.from(entry.affectedAgents)
+      }))
+      .sort((a, b) => {
+        if (b.severityWeight !== a.severityWeight) return b.severityWeight - a.severityWeight
+        if (b.activeOccurrences !== a.activeOccurrences) return b.activeOccurrences - a.activeOccurrences
+        return b.affectedAgents.length - a.affectedAgents.length
+      })
   })
 
   const paintedCount = computed(() => allSlots.value.filter(slot => slot.painted).length)
@@ -362,6 +518,8 @@ export default function useTimelineData({
     warningMessage,
     isTruncated,
     LIMIT,
+    agentSummaryList,
+    cveSummaryList,
     build,
     fetchConnectionVulns,
     snapshotAt

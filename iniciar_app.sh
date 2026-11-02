@@ -39,9 +39,9 @@ if [ "$OPCION" == "1" ]; then
     cp ./nginx/ssl/nginx-selfsigned.crt "$DB_CERT_DEST/"
     cp ./nginx/ssl/nginx-selfsigned.key "$DB_CERT_DEST/"
     
-    # Aplicar dueño postgres (UID 70 en TimescaleDB / 999 en Debian) y permisos restrictivos 600
-    sudo chown 70:70 "$DB_CERT_DEST/nginx-selfsigned.key" "$DB_CERT_DEST/nginx-selfsigned.crt" 2>/dev/null || docker run --rm -v "$DB_CERT_DEST:/certs" alpine chown -R 70:70 /certs
-    sudo chmod 600 "$DB_CERT_DEST/nginx-selfsigned.key" 2>/dev/null || docker run --rm -v "$DB_CERT_DEST:/certs" alpine chmod 600 /certs/nginx-selfsigned.key
+    # Aplicar dueño 999 (usuario postgres) y permisos restrictivos 600
+    sudo chown 999:999 "$DB_CERT_DEST/nginx-selfsigned.key" "$DB_CERT_DEST/nginx-selfsigned.crt"
+    sudo chmod 600 "$DB_CERT_DEST/nginx-selfsigned.key"
     echo "[+] Certificados replicados en $DB_CERT_DEST con permisos 600."
     # --- NUEVA LÓGICA: PERMISOS SEGUROS PARA DB (FIN) ---
 

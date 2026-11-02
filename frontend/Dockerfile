@@ -9,8 +9,6 @@ COPY . .
 
 # Definimos que esperamos una variable llamada VITE_API_URL
 ARG VITE_API_URL
-ARG VITE_BASE=/
-ENV VITE_BASE=$VITE_BASE
 # La convertimos en variable de entorno para que Vite la vea durante el build
 ENV VITE_API_URL=$VITE_API_URL
 

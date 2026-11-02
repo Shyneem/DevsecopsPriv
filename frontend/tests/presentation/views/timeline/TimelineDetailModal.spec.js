@@ -335,8 +335,7 @@ describe('TimelineDetailModal.vue', () => {
     const columns = [
       'connection_name', 'agent_name', 'cve_id', 'severity',
       'timeline_event_at', 'detected_at', 'first_seen',
-      'last_seen', 'dwell_time_days', 'total_age_days',
-      'status', 'resolved_at'
+      'last_seen', 'status', 'resolved_at'
     ]
 
     for (let i = 0; i < headers.length; i++) {

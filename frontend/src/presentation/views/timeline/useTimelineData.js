@@ -35,7 +35,6 @@ export default function useTimelineData({
   const rangeEndMs = ref(0)
   const errorMessage = ref('')
   const warningMessage = ref('')
-  const isTruncated = ref(false)
   const snapshotCache = ref(new Map())
 
   const computeRange = vulns => {
@@ -260,10 +259,7 @@ export default function useTimelineData({
     const data = Array.isArray(response.data) ? response.data : []
 
     if (data.length >= LIMIT) {
-      isTruncated.value = true
-      warningMessage.value = `Se alcanzaron ${LIMIT} registros. El analisis puede estar truncado. Te recomendamos acotar el rango de fechas (24H o 7D) o filtrar por agentes específicos para asegurar la visualización completa.`
-    } else {
-      isTruncated.value = false
+      warningMessage.value = `Se alcanzaron ${LIMIT} registros. El analisis puede estar truncado.`
     }
 
     return data
@@ -274,7 +270,6 @@ export default function useTimelineData({
     hasBuilt.value = false
     errorMessage.value = ''
     warningMessage.value = ''
-    isTruncated.value = false
     changeEvents.value = []
     filteredVulnsData.value = []
     snapshotCache.value.clear()
@@ -360,8 +355,6 @@ export default function useTimelineData({
     latestSnap,
     errorMessage,
     warningMessage,
-    isTruncated,
-    LIMIT,
     build,
     fetchConnectionVulns,
     snapshotAt

@@ -5,17 +5,7 @@ __pycache__/
 reports/
 
 vuln-api/coverage.xml
-vuln-api/.coverage
-*.coverage
-.coverage
-vuln-api/.coverage
-*.coverage
 frontend/coverage/
 frontend/node_modules/
 certbot/*
 .idea/
-
-.env
-.env.*
-!.env.example
-

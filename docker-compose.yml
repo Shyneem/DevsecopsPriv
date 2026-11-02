@@ -1,20 +1,20 @@
 services:
   db-api:
-    image: timescale/timescaledb:latest-pg15
+    image: postgres:15
     container_name: db-api
     restart: unless-stopped
     env_file:
       - .env
     volumes:
       - postgres_api_data:/var/lib/postgresql/data
-      - ./db-init:/docker-entrypoint-initdb.d:ro
+      # Montamos los certificados generados (ajusta la ruta si es necesario)
+      - ${HOME}/certs_db/nginx-selfsigned.crt:/var/lib/postgresql/nginx-selfsigned.crt:ro
+      - ${HOME}/certs_db/nginx-selfsigned.key:/var/lib/postgresql/nginx-selfsigned.key:ro
     networks:
       - app-network
-    # Habilitamos SSL y TimescaleDB mediante flags de configuración
+    # Habilitamos SSL mediante flags de configuración
     command: 
       - "postgres"
-      - "-c"
-      - "shared_preload_libraries=timescaledb"
       - "-c"
       - "ssl=on"
       - "-c"
@@ -33,7 +33,7 @@ services:
     container_name: api
     environment:
       # Añadimos ?sslmode=require al final de la URL
-      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db-api:5432/${POSTGRES_DB}
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db-api:5432/${POSTGRES_DB}?sslmode=require"
     depends_on:
       db-api:
         condition: service_healthy
@@ -53,12 +53,12 @@ services:
       context: ./frontend
       args:
         - VITE_API_URL=${VITE_API_URL}
-        - VITE_BASE=${VITE_BASE}
     container_name: frontend
     env_file:
       - .env
     ports:
-      - "8104:443"
+      - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:

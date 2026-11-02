@@ -12,15 +12,7 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from .models import User
 
-SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY")
-
-if not SECRET_KEY:
-    raise RuntimeError("CRÍTICO: Define JWT_SECRET o SECRET_KEY en el .env")
-
-# Evita el uso de la clave por defecto
-if SECRET_KEY == "dev-secret-key":
-    raise RuntimeError("CRÍTICO: No uses la clave por defecto 'dev-secret-key'")
-
+SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
@@ -67,12 +59,3 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
         raise creds_exc
     return user
 
-def get_current_system_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != "system_admin":
-        raise HTTPException(status_code=403, detail="Requiere permisos de Administrador del Sistema")
-    return current_user
-
-def get_current_group_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ["system_admin", "group_admin"]:
-        raise HTTPException(status_code=403, detail="Requiere permisos de Administrador de Grupo")
-    return current_user

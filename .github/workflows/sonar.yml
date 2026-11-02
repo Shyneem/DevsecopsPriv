@@ -34,8 +34,6 @@ jobs:
 
       - name: Run tests (pytest) and generate coverage reports
         working-directory: ./vuln-api
-        env:
-          JWT_SECRET: "test-secret-key-only-for-testing"
         run: |
           . .venv/bin/activate
           .venv/bin/pip install pytest pytest-cov
@@ -57,11 +55,11 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         with:
           args: >
-            -Dsonar.projectKey=Shyneem_DevsecopsPriv
-            -Dsonar.organization=devsecops-vuln
+            -Dsonar.projectKey=StephanPaulRamirez_DevsecopsPriv
+            -Dsonar.organization=stephanpaulramirez
             -Dsonar.python.coverage.reportPaths=vuln-api/coverage.xml
             -Dsonar.sources=vuln-api/app
             -Dsonar.tests=vuln-api/tests
             -Dsonar.qualitygate.wait=true
         env:
-          SONAR_TOKEN: ${{ secrets.SONARTOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
